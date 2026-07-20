@@ -92,9 +92,16 @@ fn hex_to_rgb(hex: &str) -> (i32, i32, i32) {
 /// Build flat tree nodes: saved connections only (no expanded children).
 pub fn build_connection_tree(
     cm: &crate::connection_manager::ConnectionManager,
+    filter_text: &str,
 ) -> Vec<crate::FlatTreeNode> {
     let mut nodes = Vec::new();
     for conn in cm.list() {
+        // Apply filter at connection level
+        if !filter_text.is_empty()
+            && !conn.name.to_lowercase().contains(&filter_text.to_lowercase())
+        {
+            continue;
+        }
         let (r, g, b) = hex_to_rgb(&conn.color);
         nodes.push(crate::FlatTreeNode {
             id: slint::SharedString::from(&conn.id),
@@ -113,16 +120,90 @@ pub fn build_connection_tree(
     nodes
 }
 
+/// Read the current tree filter from AppState.
+fn get_tree_filter(app: &Arc<AppState>) -> String {
+    app.tree_filter
+        .lock()
+        .unwrap_or_else(|e| {
+            eprintln!("[bridge] Recovered from poisoned mutex");
+            e.into_inner()
+        })
+        .clone()
+}
+
+/// Check if text matches filter (case-insensitive).
+fn matches_filter(text: &str, filter_text: &str) -> bool {
+    filter_text.is_empty() || text.to_lowercase().contains(&filter_text.to_lowercase())
+}
+
 /// Rebuild flat nodes including any expanded children.
 pub fn build_tree_with_children(
     cm: &crate::connection_manager::ConnectionManager,
     cache: &TreeCache,
+    filter_text: &str,
 ) -> Vec<crate::FlatTreeNode> {
     let mut nodes = Vec::new();
     for conn in cm.list() {
         let has_databases = cache.expanded_databases.contains_key(&conn.id);
         let has_tables = cache.expanded_connections.contains_key(&conn.id);
         let is_expanded = has_databases || has_tables;
+
+        // Check if any child matches the filter (when filter is active)
+        let conn_matches = matches_filter(&conn.name, filter_text);
+        let mut children_have_match = false;
+
+        if !filter_text.is_empty() && !conn_matches {
+            // Check if any child (database/table/column) matches
+            if has_databases {
+                if let Some(dbs) = cache.expanded_databases.get(&conn.id) {
+                    for db_name in dbs {
+                        if matches_filter(db_name, filter_text) {
+                            children_have_match = true;
+                            break;
+                        }
+                        let db_node_id = format!("{}__{}", conn.id, db_name);
+                        if let Some(tables) = cache.expanded_db_tables.get(&db_node_id) {
+                            for t in tables {
+                                if matches_filter(&t.table_name, filter_text) {
+                                    children_have_match = true;
+                                    break;
+                                }
+                                if let Some(cols) = cache.expanded_tables.get(&t.node_id) {
+                                    if cols.iter().any(|c| matches_filter(&c.column_name, filter_text)) {
+                                        children_have_match = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if children_have_match {
+                            break;
+                        }
+                    }
+                }
+            }
+            if !children_have_match && has_tables {
+                if let Some(children) = cache.expanded_connections.get(&conn.id) {
+                    for child in children {
+                        if matches_filter(&child.table_name, filter_text) {
+                            children_have_match = true;
+                            break;
+                        }
+                        if let Some(cols) = cache.expanded_tables.get(&child.node_id) {
+                            if cols.iter().any(|c| matches_filter(&c.column_name, filter_text)) {
+                                children_have_match = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !filter_text.is_empty() && !conn_matches && !children_have_match {
+            continue;
+        }
+
         let (r, g, b) = hex_to_rgb(&conn.color);
         nodes.push(crate::FlatTreeNode {
             id: slint::SharedString::from(&conn.id),
@@ -143,6 +224,30 @@ pub fn build_tree_with_children(
             for db_name in dbs {
                 let db_node_id = format!("{}__{}", conn.id, db_name);
                 let db_expanded = cache.expanded_db_tables.contains_key(&db_node_id);
+
+                let db_matches = matches_filter(db_name, filter_text);
+                let mut db_children_match = false;
+                if !filter_text.is_empty() && !db_matches {
+                    if let Some(tables) = cache.expanded_db_tables.get(&db_node_id) {
+                        for t in tables {
+                            if matches_filter(&t.table_name, filter_text) {
+                                db_children_match = true;
+                                break;
+                            }
+                            if let Some(cols) = cache.expanded_tables.get(&t.node_id) {
+                                if cols.iter().any(|c| matches_filter(&c.column_name, filter_text)) {
+                                    db_children_match = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !filter_text.is_empty() && !db_matches && !db_children_match {
+                    continue;
+                }
+
                 nodes.push(crate::FlatTreeNode {
                     id: slint::SharedString::from(&db_node_id),
                     label: slint::SharedString::from(db_name),
@@ -161,6 +266,26 @@ pub fn build_tree_with_children(
                 if db_expanded && let Some(tables) = cache.expanded_db_tables.get(&db_node_id) {
                     for t in tables {
                         let tbl_expanded = cache.expanded_tables.contains_key(&t.node_id);
+
+                        if !filter_text.is_empty()
+                            && !matches_filter(&t.table_name, filter_text)
+                            && !tbl_expanded
+                        {
+                            continue;
+                        }
+
+                        // Check if any column matches when table name doesn't
+                        let tbl_matches = matches_filter(&t.table_name, filter_text);
+                        let mut col_matches = false;
+                        if !tbl_matches && tbl_expanded {
+                            if let Some(cols) = cache.expanded_tables.get(&t.node_id) {
+                                col_matches = cols.iter().any(|c| matches_filter(&c.column_name, filter_text));
+                            }
+                        }
+                        if !filter_text.is_empty() && !tbl_matches && !col_matches {
+                            continue;
+                        }
+
                         nodes.push(crate::FlatTreeNode {
                             id: slint::SharedString::from(&t.node_id),
                             label: slint::SharedString::from(&t.table_name),
@@ -176,8 +301,15 @@ pub fn build_tree_with_children(
                         });
 
                         // Show column children if table expanded
-                        if tbl_expanded && let Some(cols) = cache.expanded_tables.get(&t.node_id) {
+                        if tbl_expanded
+                            && let Some(cols) = cache.expanded_tables.get(&t.node_id)
+                        {
                             for col in cols {
+                                if !filter_text.is_empty()
+                                    && !matches_filter(&col.column_name, filter_text)
+                                {
+                                    continue;
+                                }
                                 nodes.push(crate::FlatTreeNode {
                                     id: slint::SharedString::from(&col.node_id),
                                     label: slint::SharedString::from(&col.column_name),
@@ -202,6 +334,25 @@ pub fn build_tree_with_children(
         if has_tables && let Some(children) = cache.expanded_connections.get(&conn.id) {
             for child in children {
                 let tbl_expanded = cache.expanded_tables.contains_key(&child.node_id);
+
+                if !filter_text.is_empty()
+                    && !matches_filter(&child.table_name, filter_text)
+                    && !tbl_expanded
+                {
+                    continue;
+                }
+
+                let tbl_matches = matches_filter(&child.table_name, filter_text);
+                let mut col_matches = false;
+                if !tbl_matches && tbl_expanded {
+                    if let Some(cols) = cache.expanded_tables.get(&child.node_id) {
+                        col_matches = cols.iter().any(|c| matches_filter(&c.column_name, filter_text));
+                    }
+                }
+                if !filter_text.is_empty() && !tbl_matches && !col_matches {
+                    continue;
+                }
+
                 nodes.push(crate::FlatTreeNode {
                     id: slint::SharedString::from(&child.node_id),
                     label: slint::SharedString::from(&child.table_name),
@@ -219,6 +370,11 @@ pub fn build_tree_with_children(
                 // Show column children if table expanded
                 if tbl_expanded && let Some(cols) = cache.expanded_tables.get(&child.node_id) {
                     for col in cols {
+                        if !filter_text.is_empty()
+                            && !matches_filter(&col.column_name, filter_text)
+                        {
+                            continue;
+                        }
                         nodes.push(crate::FlatTreeNode {
                             id: slint::SharedString::from(&col.node_id),
                             label: slint::SharedString::from(&col.column_name),
@@ -454,11 +610,12 @@ pub fn expand_connection(
             .insert(conn_id.to_string(), databases);
     }
 
+    let filter_text = get_tree_filter(app);
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_tree_with_children(&cm, cache);
+    let nodes = build_tree_with_children(&cm, cache, &filter_text);
     push_tree(window, nodes);
 }
 
@@ -534,11 +691,12 @@ pub fn expand_database_tables(
         .expanded_db_tables
         .insert(node_id.to_string(), children);
 
+    let filter_text = get_tree_filter(app);
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_tree_with_children(&cm, cache);
+    let nodes = build_tree_with_children(&cm, cache, &filter_text);
     push_tree(window, nodes);
 
     window.set_status_left(slint::SharedString::from(format!(
@@ -557,11 +715,12 @@ pub fn collapse_database_tables(
 ) {
     cache.expanded_db_tables.remove(node_id);
 
+    let filter_text = get_tree_filter(app);
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_tree_with_children(&cm, cache);
+    let nodes = build_tree_with_children(&cm, cache, &filter_text);
     push_tree(window, nodes);
 }
 
@@ -581,11 +740,12 @@ pub fn collapse_connection(
         }
     }
 
+    let filter_text = get_tree_filter(app);
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_tree_with_children(&cm, cache);
+    let nodes = build_tree_with_children(&cm, cache, &filter_text);
     push_tree(window, nodes);
 }
 
@@ -668,11 +828,12 @@ pub fn expand_table(
             .expanded_tables
             .insert(node_id.to_string(), col_entries);
 
+        let filter_text = get_tree_filter(app);
         let cm = app.connection_manager.lock().unwrap_or_else(|e| {
             eprintln!("[bridge] Recovered from poisoned mutex");
             e.into_inner()
         });
-        let nodes = build_tree_with_children(&cm, cache);
+        let nodes = build_tree_with_children(&cm, cache, &filter_text);
         push_tree(window, nodes);
     }
 }
@@ -686,11 +847,12 @@ pub fn collapse_table(
 ) {
     cache.expanded_tables.remove(node_id);
 
+    let filter_text = get_tree_filter(app);
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_tree_with_children(&cm, cache);
+    let nodes = build_tree_with_children(&cm, cache, &filter_text);
     push_tree(window, nodes);
 }
 
@@ -736,7 +898,13 @@ pub fn select_table(
             }
         };
 
-        let sql = format!("SELECT * FROM {} LIMIT 1000;", quoted);
+        let max_rows = {
+            *app.max_rows.lock().unwrap_or_else(|e| {
+                eprintln!("[bridge] Recovered from poisoned mutex");
+                e.into_inner()
+            })
+        };
+        let sql = format!("SELECT * FROM {} LIMIT {};", quoted, max_rows);
         window.set_sql_text(slint::SharedString::from(sql.clone()));
 
         // Execute the query on the specific connection (not just the first one)
@@ -747,11 +915,18 @@ pub fn select_table(
 // ── Connection management ───────────────────────────────────
 
 pub fn refresh_tree(app: &Arc<AppState>, window: &crate::MainWindow) {
+    let filter_text = {
+        let ft = app.tree_filter.lock().unwrap_or_else(|e| {
+            eprintln!("[bridge] Recovered from poisoned mutex");
+            e.into_inner()
+        });
+        ft.clone()
+    };
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_connection_tree(&cm);
+    let nodes = build_connection_tree(&cm, &filter_text);
     push_tree(window, nodes);
 }
 
@@ -915,6 +1090,13 @@ pub fn execute_on_first_connection(app: &Arc<AppState>, window: &crate::MainWind
         ac.values().next().cloned()
     };
 
+    let max_rows = {
+        *app.max_rows.lock().unwrap_or_else(|e| {
+            eprintln!("[bridge] Recovered from poisoned mutex");
+            e.into_inner()
+        })
+    };
+
     match active {
         Some(conn) => {
             window.set_result_error(slint::SharedString::from(""));
@@ -928,7 +1110,7 @@ pub fn execute_on_first_connection(app: &Arc<AppState>, window: &crate::MainWind
                 &conn.connector_name,
                 conn.conn_id,
                 sql,
-                Some(1000),
+                Some(max_rows),
                 Box::new(move |view: QueryResultView| {
                     if let Some(w) = window_weak.upgrade() {
                         apply_query_result(&w, &view);
@@ -958,10 +1140,16 @@ pub fn apply_query_result(w: &crate::MainWindow, view: &QueryResultView) {
     let col_model = slint::VecModel::from(cols);
 
     let mut slint_rows = Vec::new();
-    for row in &view.rows {
+    for (row_idx, row) in view.rows.iter().enumerate() {
         let cells: Vec<slint::SharedString> = row.iter().map(slint::SharedString::from).collect();
+        let null_flags: Vec<bool> = view
+            .null_cells
+            .get(row_idx)
+            .map(|nc| nc.clone())
+            .unwrap_or_else(|| vec![false; row.len()]);
         slint_rows.push(crate::TableRow {
             cells: slint::ModelRc::from(Rc::new(slint::VecModel::from(cells))),
+            null_cells: slint::ModelRc::from(Rc::new(slint::VecModel::from(null_flags))),
         });
     }
     let row_model = slint::VecModel::from(slint_rows);
@@ -970,11 +1158,18 @@ pub fn apply_query_result(w: &crate::MainWindow, view: &QueryResultView) {
     w.set_result_rows(slint::ModelRc::from(Rc::new(row_model)));
     w.set_has_results(true);
 
-    let mut status = format!(
-        "{} rows returned in {:.1} ms",
-        view.rows.len(),
-        view.execution_time_ms
-    );
+    let mut status = if view.columns.is_empty() && view.rows_affected > 0 {
+        format!(
+            "{} rows affected in {:.1} ms",
+            view.rows_affected, view.execution_time_ms
+        )
+    } else {
+        format!(
+            "{} rows returned in {:.1} ms",
+            view.rows.len(),
+            view.execution_time_ms
+        )
+    };
     if view.has_more {
         status.push_str(" (truncated, more rows available)");
     }
@@ -992,6 +1187,13 @@ pub fn execute_on_connection(
     window.set_result_error(slint::SharedString::from(""));
     window.set_result_status(slint::SharedString::from("Executing..."));
 
+    let max_rows = {
+        *app.max_rows.lock().unwrap_or_else(|e| {
+            eprintln!("[bridge] Recovered from poisoned mutex");
+            e.into_inner()
+        })
+    };
+
     let app = app.clone();
     let window_weak = window.as_weak();
     let connector_name = connector_name.to_string();
@@ -1001,7 +1203,7 @@ pub fn execute_on_connection(
         &connector_name,
         conn_id,
         sql,
-        Some(1000),
+        Some(max_rows),
         Box::new(move |view: QueryResultView| {
             if let Some(w) = window_weak.upgrade() {
                 apply_query_result(&w, &view);

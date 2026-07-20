@@ -3,7 +3,7 @@ import { Separator, SeparatorOrientation } from "separator.slint";
 
 // Simple data table. `columns` are header titles; each row's `cells` align
 // to the columns by equal-stretch. Columns and cells share the same count.
-export struct TableRow { cells: [string] }
+export struct TableRow { cells: [string], null-cells: [bool] }
 
 export component Table inherits Rectangle {
     // Column headers, left-to-right.
@@ -40,14 +40,17 @@ export component Table inherits Rectangle {
                 background: row-touch.has-hover ? Tokens.color-surface-1 : transparent;
 
                 HorizontalLayout {
-                    for cell in row.cells: Rectangle {
+                    for cell[idx] in row.cells: Rectangle {
                         horizontal-stretch: 1;
                         Text {
                             x: 12px;
                             y: (parent.height - self.preferred-height) / 2;
                             text: cell;
-                            color: Tokens.color-foreground;
+                            color: idx < row.null-cells.length && row.null-cells[idx]
+                                ? Tokens.color-muted-foreground
+                                : Tokens.color-foreground;
                             font-size: Tokens.typography-body-size;
+                            font-italic: idx < row.null-cells.length && row.null-cells[idx];
                         }
                     }
                 }

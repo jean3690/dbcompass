@@ -15,6 +15,9 @@ export component QueryEditor inherits Rectangle {
     in-out property <bool> history-visible: false;
     in property <[CompletionItem]> completion-items;
     in-out property <bool> completion-visible: false;
+    in-out property <int> max-rows: 1000;
+    property <string> max-rows-str: "1000";
+    callback max-rows-changed(int);
     callback execute();
     callback history-selected(string);
     callback completion-selected(string);
@@ -60,6 +63,44 @@ export component QueryEditor inherits Rectangle {
                 clicked => {
                     root.history-visible = !root.history-visible;
                     root.completion-visible = false;
+                }
+            }
+
+            // Max rows control
+            Rectangle {
+                width: 100px;
+                height: 100%;
+                VerticalLayout {
+                    spacing: 0px;
+                    padding-top: 2px;
+                    Text {
+                        text: "Max rows";
+                        font-size: 10px;
+                        color: Tokens.color-muted-foreground;
+                        height: 14px;
+                        vertical-alignment: center;
+                    }
+                    Rectangle {
+                        height: 22px;
+                        background: Tokens.color-surface-1;
+                        border-color: Tokens.color-border-hairline;
+                        border-width: 1px;
+                        border-radius: 4px;
+                        TextInput {
+                            x: 4px;
+                            width: parent.width - 8px;
+                            height: parent.height;
+                            text: root.max-rows-str;
+                            color: Tokens.color-foreground;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            edited => {
+                                root.max-rows-str = self.text;
+                                root.max-rows = self.text.to-float();
+                                root.max-rows-changed(root.max-rows);
+                            }
+                        }
+                    }
                 }
             }
 

@@ -4,7 +4,8 @@ use plugin_interface::QueryResult;
 pub struct QueryResultView {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
-    #[expect(dead_code)]
+    /// Parallel to `rows`: tracks which cells are NULL for styled rendering
+    pub null_cells: Vec<Vec<bool>>,
     pub rows_affected: u64,
     pub execution_time_ms: f64,
     pub has_more: bool,
@@ -14,21 +15,24 @@ pub struct QueryResultView {
 impl QueryResultView {
     pub fn from_query_result(result: QueryResult) -> Self {
         let columns: Vec<String> = result.columns.iter().map(|c| c.name.clone()).collect();
-        let rows: Vec<Vec<String>> = result
-            .rows
-            .iter()
-            .map(|row| {
-                row.iter()
-                    .map(|cell| {
-                        if cell.is_null {
-                            "NULL".into()
-                        } else {
-                            cell.display.clone().unwrap_or_default()
-                        }
-                    })
-                    .collect()
-            })
-            .collect();
+        let mut rows: Vec<Vec<String>> = Vec::new();
+        let mut null_cells: Vec<Vec<bool>> = Vec::new();
+
+        for row in &result.rows {
+            let mut cell_row = Vec::new();
+            let mut null_row = Vec::new();
+            for cell in row {
+                if cell.is_null {
+                    cell_row.push("⟨NULL⟩".into());
+                    null_row.push(true);
+                } else {
+                    cell_row.push(cell.display.clone().unwrap_or_default());
+                    null_row.push(false);
+                }
+            }
+            rows.push(cell_row);
+            null_cells.push(null_row);
+        }
 
         Self {
             execution_time_ms: result.execution_time_ns as f64 / 1_000_000.0,
@@ -36,6 +40,7 @@ impl QueryResultView {
             has_more: result.has_more,
             columns,
             rows,
+            null_cells,
             error: None,
         }
     }
@@ -44,6 +49,7 @@ impl QueryResultView {
         Self {
             columns: Vec::new(),
             rows: Vec::new(),
+            null_cells: Vec::new(),
             rows_affected: 0,
             execution_time_ms: 0.0,
             has_more: false,
@@ -120,7 +126,9 @@ mod tests {
         let view = QueryResultView::from_query_result(result);
         assert_eq!(view.rows.len(), 2);
         assert_eq!(view.rows[0][0], "hello");
-        assert_eq!(view.rows[1][0], "NULL");
+        assert_eq!(view.rows[1][0], "⟨NULL⟩");
+        assert!(!view.null_cells[0][0]);
+        assert!(view.null_cells[1][0]);
     }
 
     #[test]

@@ -73,6 +73,14 @@ export component MainWindow inherits Window {
     // --- Customizable editor height ---
     property <length> editor-height: 200px;
 
+    // --- Max rows ---
+    in-out property <int> max-rows: 1000;
+    callback max-rows-changed(int);
+
+    // --- Connection filter ---
+    in-out property <string> filter-text: "";
+    callback filter-changed(string);
+
     // --- Layout ---
 
     VerticalLayout {
@@ -147,16 +155,56 @@ export component MainWindow inherits Window {
                 clip: true;
                 background: Tokens.color-card;
 
-                ConnectionTree {
+                Rectangle {
                     width: parent.width;
                     height: parent.height;
-                    nodes: root.tree-nodes;
-                    active: root.active-node;
-                    clicked(id) => { root.tree-node-clicked(id); }
-                    expand-toggled(id) => { root.tree-node-expand-toggled(id); }
-                    right-clicked(id) => {
-                        root.active-node = id;
-                        root.context-menu-visible = true;
+                    VerticalLayout {
+                        spacing: 4px;
+                        padding: 6px;
+                        padding-bottom: 0px;
+
+                        // Search / filter input
+                        Rectangle {
+                            height: 28px;
+                            background: Tokens.color-surface-1;
+                            border-color: Tokens.color-border-hairline;
+                            border-width: 1px;
+                            border-radius: Tokens.radius-sm;
+
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                spacing: 4px;
+                                Text {
+                                    text: "🔍";
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                }
+                                TextInput {
+                                    width: parent.width - 30px;
+                                    height: parent.height;
+                                    text <=> root.filter-text;
+                                    color: Tokens.color-foreground;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                    edited => {
+                                        root.filter-changed(root.filter-text);
+                                    }
+                                }
+                            }
+                        }
+
+                        ConnectionTree {
+                            width: parent.width;
+                            height: parent.height;
+                            nodes: root.tree-nodes;
+                            active: root.active-node;
+                            clicked(id) => { root.tree-node-clicked(id); }
+                            expand-toggled(id) => { root.tree-node-expand-toggled(id); }
+                            right-clicked(id) => {
+                                root.active-node = id;
+                                root.context-menu-visible = true;
+                            }
+                        }
                     }
                 }
 
@@ -193,6 +241,8 @@ export component MainWindow inherits Window {
                                 history-visible <=> root.history-visible;
                                 completion-items <=> root.completion-items;
                                 completion-visible <=> root.completion-visible;
+                                max-rows <=> root.max-rows;
+                                max-rows-changed(val) => { root.max-rows-changed(val); }
                                 execute => { root.execute-query(); }
                                 history-selected(text) => { root.history-selected(text); }
                                 completion-selected(text) => { root.completion-selected(text); }

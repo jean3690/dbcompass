@@ -279,6 +279,29 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
+    // ── Max rows changed ──
+
+    let app_clone = app.clone();
+    window.on_max_rows_changed(move |val: i32| {
+        let rows = val.max(1) as usize;
+        if let Ok(mut max_rows) = app_clone.max_rows.lock() {
+            *max_rows = rows;
+        }
+    });
+
+    // ── Tree filter changed ──
+
+    let app_clone = app.clone();
+    let window_handle = window.as_weak();
+    window.on_filter_changed(move |filter_text: slint::SharedString| {
+        if let Ok(mut tf) = app_clone.tree_filter.lock() {
+            *tf = filter_text.to_string();
+        }
+        if let Some(w) = window_handle.upgrade() {
+            bridge::refresh_tree(&app_clone, &w);
+        }
+    });
+
     // Initial history load
     bridge::update_query_history(&app, &window);
 

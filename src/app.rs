@@ -32,6 +32,8 @@ pub struct AppState {
     pub active_connections: Mutex<HashMap<String, ActiveConnection>>,
     pub query_history: Mutex<Vec<String>>,
     pub sql_completer: Mutex<SqlCompleter>,
+    pub max_rows: Mutex<usize>,
+    pub tree_filter: Mutex<String>,
     data_dir: PathBuf,
 }
 
@@ -49,6 +51,8 @@ impl AppState {
             active_connections: Mutex::new(HashMap::new()),
             query_history: Mutex::new(history),
             sql_completer: Mutex::new(SqlCompleter::new()),
+            max_rows: Mutex::new(1000),
+            tree_filter: Mutex::new(String::new()),
             data_dir,
         })
     }
