@@ -1,0 +1,34 @@
+[workspace]
+# Whether to allow the workspace root to be released or not
+allow-branch = ["master", "main"]
+
+# Whether to create a git tag for the release
+tag-name = "v{{version}}"
+tag-prefix = "v"
+tag-message = "Release {{version}}"
+
+# Whether to push the tag to the remote
+push-remote = "origin"
+
+# Whether to create a commit for the release
+pre-release-commit-message = "chore: release {{version}}"
+pre-release-replacements = []
+
+# Sign commits and tags
+sign-commit = false
+sign-tag = false
+
+# Publish to crates.io (false for this project)
+publish = false
+
+# Don't create a tag by default, let us decide
+tag = true
+push = true
+
+[plugins]
+# Verify the workspace builds before releasing
+verify = true
+
+[plugin-interface]
+# Don't release plugin-interface separately - it's workspace-managed
+release = false

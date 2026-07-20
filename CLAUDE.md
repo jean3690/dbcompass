@@ -6,6 +6,66 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 DBCompass is a Rust desktop database client with a plugin architecture for connecting to multiple database engines. It uses the [Slint](https://slint.dev) GUI framework for its UI and the `slintcn` component library for themed widgets.
 
+## Version Management
+
+This project uses [**Conventional Commits**](https://www.conventionalcommits.org/) for automated version management.
+
+### Tools
+
+| Tool | Purpose | Config |
+|------|---------|--------|
+| `cargo-release` | Bump version, tag, release | `release.toml` |
+| `git-cliff` | Generate changelog | `cliff.toml` |
+
+### Workflow
+
+#### Local release
+
+```bash
+# Install tools
+cargo install cargo-release git-cliff
+
+# Dry-run: see what changes would be made
+cargo release patch --no-publish --dry-run
+
+# Execute: bump version, tag, push
+cargo release patch --no-publish --execute
+
+# Generate changelog after release
+git-cliff -o CHANGELOG.md
+git add CHANGELOG.md
+git commit -m "chore: update changelog"
+git push --follow-tags origin HEAD
+```
+
+#### Git tag release (triggers CI)
+
+```bash
+# Manually tag current version
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+#### GitHub Actions (manual)
+
+1. Go to **Actions → Version Bump** → **Run workflow**
+2. Choose bump type: `patch`, `minor`, or `major`
+3. The workflow auto-bumps version, commits, tags, and pushes
+4. Tag push triggers the **Release** workflow
+
+### Version Validation
+
+When a `v*` tag is pushed, the release workflow validates:
+- The tag version (e.g. `v0.1.0`) matches `Cargo.toml` version
+- If they don't match, the build fails
+
+### Changelog
+
+Changelog is auto-generated from conventional commits. Run locally:
+```bash
+git-cliff -o CHANGELOG.md
+```
+
 ## Build & Run Commands
 
 ```bash
