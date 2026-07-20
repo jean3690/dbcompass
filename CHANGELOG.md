@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.1.1] - 2026-07-20
+
+### Chore
+
+- Release
+- Remove template files from slintcn, update release config
+- Set up version management system
+
 ## [v0.1.0] - 2026-07-20
 
 ### CI/CD
