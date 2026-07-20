@@ -1,0 +1,161 @@
+import { Dialog } from "slintcn/components/dialog.slint";
+import { Input } from "slintcn/components/input.slint";
+import { Button, ButtonVariant, ButtonSize } from "slintcn/components/button.slint";
+import { Tokens } from "slintcn/theme/tokens.slint";
+
+export component ConnectionFormDialog inherits Rectangle {
+    in-out property <bool> open: false;
+    in property <[string]> connector-types;
+    in property <string> dialog-title: "New Connection";
+
+    // Form fields
+    in-out property <string> conn-name: "";
+    in-out property <string> connector-type: "";
+    in-out property <string> host: "";
+    in-out property <string> port-text: "0";
+    in-out property <string> database: "";
+    in-out property <string> username: "";
+    in-out property <string> password: "";
+
+    callback accepted();
+    callback dismissed();
+    callback browse-file();
+
+    Dialog {
+        open <=> root.open;
+        title: root.dialog-title;
+        description: "Configure the database connection.";
+        dismiss-on-backdrop: false;
+        dismissed => { root.dismissed(); }
+
+        VerticalLayout {
+            spacing: 12px;
+            padding: 0px;
+
+            // Connection name
+            Text {
+                text: "Connection Name";
+                font-size: 13px;
+                color: Tokens.color-foreground;
+            }
+            Input {
+                placeholder: "My Database";
+                text <=> root.conn-name;
+            }
+
+            // Connector type
+            Text {
+                text: "Database Type";
+                font-size: 13px;
+                color: Tokens.color-foreground;
+            }
+            HorizontalLayout {
+                spacing: 4px;
+                for t in root.connector-types: Button {
+                    text: t;
+                    variant: t == root.connector-type ? ButtonVariant.default : ButtonVariant.outline;
+                    clicked => {
+                        root.connector-type = t;
+                        if t == "SQLite" {
+                            root.host = "";
+                            root.port-text = "0";
+                            root.username = "";
+                            root.password = "";
+                            root.database = "";
+                        } else if t == "MySQL" {
+                            root.port-text = "3306";
+                        } else if t == "PostgreSQL" {
+                            root.port-text = "5432";
+                        }
+                    }
+                }
+            }
+
+            // SQLite-specific: database file path with Browse
+            if root.connector-type == "SQLite": VerticalLayout {
+                spacing: 4px;
+                Text {
+                    text: "Database File";
+                    font-size: 13px;
+                    color: Tokens.color-foreground;
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    Input {
+                        horizontal-stretch: 1;
+                        placeholder: "C:/data/mydb.db";
+                        text <=> root.database;
+                    }
+                    Button {
+                        text: "Browse";
+                        size: ButtonSize.sm;
+                        variant: ButtonVariant.outline;
+                        clicked => { root.browse-file(); }
+                    }
+                }
+            }
+
+            // Host/port for non-SQLite
+            if root.connector-type != "SQLite" && root.connector-type != "": VerticalLayout {
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 4px;
+                        Text { text: "Host"; font-size: 13px; color: Tokens.color-foreground; }
+                        Input { placeholder: "localhost"; text <=> root.host; }
+                    }
+                    VerticalLayout {
+                        width: 80px;
+                        spacing: 4px;
+                        Text { text: "Port"; font-size: 13px; color: Tokens.color-foreground; }
+                        Input { placeholder: "3306"; text <=> root.port-text; }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 4px;
+                        Text { text: "Username"; font-size: 13px; color: Tokens.color-foreground; }
+                        Input { placeholder: "root"; text <=> root.username; }
+                    }
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 4px;
+                        Text { text: "Password"; font-size: 13px; color: Tokens.color-foreground; }
+                        Input { password: true; placeholder: "••••••••"; text <=> root.password; }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 4px;
+                    Text { text: "Database"; font-size: 13px; color: Tokens.color-foreground; }
+                    Input { placeholder: "mydb"; text <=> root.database; }
+                }
+            }
+
+            // Buttons
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                Button {
+                    text: "Cancel";
+                    size: ButtonSize.sm;
+                    clicked => { root.open = false; root.dismissed(); }
+                }
+                Button {
+                    text: "Connect";
+                    size: ButtonSize.sm;
+                    disabled: root.conn-name == ""
+                        || root.connector-type == ""
+                        || (root.connector-type == "SQLite" && root.database == "")
+                        || (root.connector-type != "SQLite" && root.host == "");
+                    clicked => {
+                        root.accepted();
+                    }
+                }
+            }
+        }
+    }
+}

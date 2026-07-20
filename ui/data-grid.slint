@@ -1,0 +1,110 @@
+import { Button, ButtonVariant, ButtonSize } from "slintcn/components/button.slint";
+import { Table, TableRow } from "slintcn/components/table.slint";
+import { Tokens } from "slintcn/theme/tokens.slint";
+
+export component DataGrid inherits Rectangle {
+    in property <[string]> columns;
+    in property <[TableRow]> rows;
+    in property <string> status-text: "";
+    in property <bool> has-results: false;
+    in property <string> error-text: "";
+    callback export-csv();
+    callback export-json();
+    callback clear-results();
+
+    VerticalLayout {
+        spacing: 4px;
+
+        // Error display
+        if root.error-text != "": Rectangle {
+            height: 32px;
+            background: Tokens.color-destructive.with-alpha(0.1);
+            border-radius: Tokens.radius-sm;
+            HorizontalLayout {
+                padding: 6px;
+                Text {
+                    text: root.error-text;
+                    color: Tokens.color-destructive;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // Export button bar (only when results exist)
+        if root.has-results: Rectangle {
+            height: 30px;
+            HorizontalLayout {
+                Button {
+                    text: "Export CSV";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.outline;
+                    clicked => { root.export-csv(); }
+                }
+                Button {
+                    text: "Export JSON";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.outline;
+                    clicked => { root.export-json(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Button {
+                    text: "Clear";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.ghost;
+                    clicked => { root.clear-results(); }
+                }
+            }
+        }
+
+        // Results table
+        if root.has-results: Rectangle {
+            horizontal-stretch: 1;
+            vertical-stretch: 1;
+
+            Table {
+                width: parent.width;
+                height: parent.height;
+                columns: root.columns;
+                rows: root.rows;
+            }
+        }
+
+        // Empty state
+        if !root.has-results && root.error-text == "": Rectangle {
+            horizontal-stretch: 1;
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                spacing: 4px;
+                y: (parent.height - self.preferred-height) / 2;
+                x: (parent.width - self.preferred-width) / 2;
+
+                Text {
+                    text: "No Results";
+                    color: Tokens.color-muted-foreground;
+                    font-size: 15px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Execute a query or click a table in the sidebar to see results.";
+                    color: Tokens.color-muted-foreground;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+
+        // Status bar within the grid
+        if root.status-text != "": Rectangle {
+            height: 24px;
+            Text {
+                text: root.status-text;
+                color: Tokens.color-muted-foreground;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

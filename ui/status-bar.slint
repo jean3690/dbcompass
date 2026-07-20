@@ -1,0 +1,36 @@
+import { Tokens } from "slintcn/theme/tokens.slint";
+
+export component StatusBar inherits Rectangle {
+    in property <string> left-text: "Ready";
+    in property <string> right-text: "";
+
+    background: Tokens.color-card;
+    height: 28px;
+
+    // Top border line
+    Rectangle {
+        width: parent.width;
+        height: 1px;
+        background: Tokens.color-border-hairline;
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+
+        Text {
+            text: root.left-text;
+            color: Tokens.color-muted-foreground;
+            font-size: 12px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        Text {
+            text: root.right-text;
+            color: Tokens.color-muted-foreground;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+}

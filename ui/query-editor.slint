@@ -1,0 +1,241 @@
+import { Button, ButtonVariant, ButtonSize } from "slintcn/components/button.slint";
+import { Tokens } from "slintcn/theme/tokens.slint";
+
+export struct CompletionItem {
+    label: string,
+    detail: string,
+    insert-text: string,
+}
+
+export component QueryEditor inherits Rectangle {
+    in-out property <length> editor-height: 160px;
+    in-out property <string> sql-text;
+    in property <bool> executing: false;
+    in property <[string]> history-items;
+    in-out property <bool> history-visible: false;
+    in property <[CompletionItem]> completion-items;
+    in-out property <bool> completion-visible: false;
+    callback execute();
+    callback history-selected(string);
+    callback completion-selected(string);
+    callback text-changed(string);
+
+    VerticalLayout {
+        spacing: 8px;
+
+        // Toolbar
+        HorizontalLayout {
+            spacing: 6px;
+
+            Text {
+                text: "SQL Query";
+                font-size: 14px;
+                font-weight: 600;
+                color: Tokens.color-foreground;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            if root.executing: Rectangle {
+                width: 14px;
+                height: 14px;
+                border-radius: 7px;
+                background: Tokens.color-primary;
+                opacity: 0.6;
+                y: (parent.height - 14px) / 2;
+            }
+
+            if root.executing: Text {
+                text: "Running...";
+                color: Tokens.color-primary;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+
+            Button {
+                text: "History";
+                size: ButtonSize.sm;
+                variant: ButtonVariant.outline;
+                disabled: root.history-items.length == 0;
+                clicked => {
+                    root.history-visible = !root.history-visible;
+                    root.completion-visible = false;
+                }
+            }
+
+            Button {
+                text: "Execute";
+                size: ButtonSize.sm;
+                variant: ButtonVariant.default;
+                disabled: root.executing || root.sql-text == "";
+                clicked => { root.execute(); }
+            }
+        }
+
+        // SQL Text Area (with history and completion overlays)
+        Rectangle {
+            height: root.editor-height;
+            background: Tokens.color-surface-1;
+            border-color: root.completion-visible ? Tokens.color-ring : Tokens.color-border-hairline;
+            border-width: 1px;
+            border-radius: Tokens.radius-md;
+            horizontal-stretch: 1;
+
+            TextInput {
+                x: 10px;
+                y: 8px;
+                width: parent.width - 20px;
+                height: parent.height - 16px;
+                text <=> root.sql-text;
+                color: Tokens.color-foreground;
+                font-size: 13px;
+                single-line: false;
+                read-only: root.executing;
+                opacity: root.executing ? 0.6 : 1.0;
+
+                edited => {
+                    root.text-changed(root.sql-text);
+                }
+
+                key-pressed(event) => {
+                    if (event.text == "\n" && event.modifiers.control) {
+                        root.execute();
+                        accept
+                    } else if (event.text == "\u{1b}") {
+                        // Escape — close completion/history
+                        root.completion-visible = false;
+                        root.history-visible = false;
+                        accept
+                    } else {
+                        reject
+                    }
+                }
+            }
+
+            // Keyboard shortcut hint
+            Text {
+                x: 12px;
+                y: parent.height - 20px;
+                text: "Ctrl+Enter to execute";
+                color: Tokens.color-muted-foreground;
+                font-size: 11px;
+            }
+        }
+
+        // Completion dropdown
+        if root.completion-visible && root.completion-items.length > 0: Rectangle {
+            height: Math.min(160px, root.completion-items.length * 28px + 28px);
+            background: Tokens.color-card;
+            border-color: Tokens.color-border-hairline;
+            border-width: 1px;
+            border-radius: Tokens.radius-sm;
+            drop-shadow-blur: Tokens.shadow-e2-blur;
+            drop-shadow-offset-y: Tokens.shadow-e2-offset-y;
+            drop-shadow-color: Tokens.shadow-e2-color;
+
+            VerticalLayout {
+                spacing: 0px;
+                padding: 4px;
+
+                Text {
+                    text: "Suggestions";
+                    font-size: 11px;
+                    color: Tokens.color-muted-foreground;
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: Tokens.color-border-hairline;
+                }
+
+                VerticalLayout {
+                    spacing: 0px;
+                    for item[idx] in root.completion-items : Rectangle {
+                        height: 28px;
+                        background: hover.has-hover ? Tokens.color-accent : transparent;
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            padding-top: 4px;
+                            padding-bottom: 4px;
+                            spacing: 8px;
+
+                            Text {
+                                text: item.label;
+                                font-size: 13px;
+                                color: Tokens.color-foreground;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: item.detail;
+                                font-size: 11px;
+                                color: Tokens.color-muted-foreground;
+                                vertical-alignment: center;
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+
+                        hover := TouchArea {
+                            clicked => {
+                                root.completion-selected(item.insert-text);
+                                root.completion-visible = false;
+                            }
+                        }
+
+                        animate background { duration: Tokens.motion-fast; easing: Tokens.motion-easing-standard; }
+                    }
+                }
+            }
+        }
+
+        // History dropdown
+        if root.history-visible && root.history-items.length > 0: Rectangle {
+            height: 160px;
+            background: Tokens.color-card;
+            border-color: Tokens.color-border-hairline;
+            border-width: 1px;
+            border-radius: Tokens.radius-sm;
+
+            VerticalLayout {
+                spacing: 0px;
+                padding: 4px;
+
+                Text {
+                    text: "Recent Queries";
+                    font-size: 11px;
+                    color: Tokens.color-muted-foreground;
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: Tokens.color-border-hairline;
+                }
+
+                VerticalLayout {
+                    spacing: 0px;
+                    for item in root.history-items : Rectangle {
+                        height: 28px;
+                        TouchArea {
+                            clicked => {
+                                root.history-selected(item);
+                                root.history-visible = false;
+                            }
+                        }
+                        HorizontalLayout {
+                            padding: 4px;
+                            Text {
+                                text: item;
+                                font-size: 12px;
+                                color: Tokens.color-foreground;
+                                overflow: elide;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

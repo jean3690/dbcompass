@@ -1,0 +1,323 @@
+import { Button, ButtonVariant, ButtonSize } from "slintcn/components/button.slint";
+import { Tokens, Theme, ThemeMode } from "slintcn/theme/tokens.slint";
+
+import { ConnectionTree, FlatTreeNode } from "connection-tree.slint";
+import { ConnectionFormDialog } from "connection-form-dialog.slint";
+import { QueryEditor, CompletionItem } from "query-editor.slint";
+import { DataGrid } from "data-grid.slint";
+import { StatusBar } from "status-bar.slint";
+import { TableRow } from "slintcn/components/table.slint";
+
+export component MainWindow inherits Window {
+    title: "DBCompass";
+    preferred-width: 1280px;
+    preferred-height: 860px;
+
+    // --- Connection tree ---
+    in property <[FlatTreeNode]> tree-nodes;
+    in-out property <string> active-node;
+    callback tree-node-clicked(string);
+    callback tree-node-expand-toggled(string);
+
+    // --- Connection form dialog ---
+    in property <[string]> connector-types;
+    in-out property <bool> connection-form-open: false;
+    callback connect-accepted();
+    callback connect-dismissed();
+
+    in-out property <string> form-conn-name: "";
+    in-out property <string> form-connector-type: "";
+    in-out property <string> form-host: "";
+    in-out property <string> form-port-text: "0";
+    in-out property <string> form-database: "";
+    in-out property <string> form-username: "";
+    in-out property <string> form-password: "";
+    callback browse-file();
+
+    // --- Query editor ---
+    in-out property <string> sql-text: "";
+    in property <[string]> query-history-items;
+    in property <[CompletionItem]> completion-items;
+    in-out property <bool> completion-visible;
+    in-out property <bool> history-visible;
+    callback execute-query();
+    callback history-selected(string);
+    callback completion-selected(string);
+    callback text-changed(string);
+
+    // --- Data grid ---
+    in property <[string]> result-columns;
+    in property <[TableRow]> result-rows;
+    in-out property <string> result-status: "";
+    in-out property <bool> has-results: false;
+    in-out property <string> result-error: "";
+    callback export-csv();
+    callback export-json();
+    callback disconnect-connection();
+    callback delete-connection();
+
+    // --- Status bar ---
+    in property <string> status-left: "Ready";
+    in property <string> status-right: "";
+
+    // --- Context menu ---
+    in-out property <bool> context-menu-visible: false;
+    property <length> context-menu-x: 120px;
+    property <length> context-menu-y: 80px;
+
+    // --- Customizable editor height ---
+    property <length> editor-height: 200px;
+
+    // --- Layout ---
+
+    VerticalLayout {
+        spacing: 0px;
+
+        // Toolbar
+        Rectangle {
+            height: 44px;
+            background: Tokens.color-card;
+
+            HorizontalLayout {
+                padding: 8px;
+                spacing: 8px;
+
+                Button {
+                    text: "New Connection";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.default;
+                    clicked => { root.connection-form-open = true; }
+                }
+
+                Button {
+                    text: "Disconnect";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.outline;
+                    disabled: root.active-node == "";
+                    clicked => { root.disconnect-connection(); }
+                }
+                Button {
+                    text: "Delete";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.outline;
+                    disabled: root.active-node == "";
+                    clicked => { root.delete-connection(); }
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                Text {
+                    text: "DBCompass";
+                    color: Tokens.color-muted-foreground;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                }
+
+                Button {
+                    text: Theme.mode == ThemeMode.dark ? "🌙" : "☀️";
+                    size: ButtonSize.icon-sm;
+                    variant: ButtonVariant.outline;
+                    clicked => {
+                        Theme.mode = Theme.mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width;
+                height: 1px;
+                y: parent.height - 1px;
+                background: Tokens.color-border-hairline;
+            }
+        }
+
+        // Main content: sidebar + content area
+        HorizontalLayout {
+            spacing: 0px;
+            horizontal-stretch: 1;
+
+            Rectangle {
+                width: 260px;
+                vertical-stretch: 1;
+                clip: true;
+                background: Tokens.color-card;
+
+                ConnectionTree {
+                    width: parent.width;
+                    height: parent.height;
+                    nodes: root.tree-nodes;
+                    active: root.active-node;
+                    clicked(id) => { root.tree-node-clicked(id); }
+                    expand-toggled(id) => { root.tree-node-expand-toggled(id); }
+                    right-clicked(id) => {
+                        root.active-node = id;
+                        root.context-menu-visible = true;
+                    }
+                }
+
+                Rectangle {
+                    width: 1px;
+                    height: parent.height;
+                    x: parent.width - 1px;
+                    background: Tokens.color-border-hairline;
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                vertical-stretch: 1;
+                background: Tokens.color-background;
+
+                VerticalLayout {
+                    spacing: 0px;
+
+                    // Editor + Data grid area
+                    Rectangle {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            padding: 12px;
+                            padding-bottom: 0px;
+                            spacing: 0px;
+
+                            // Query editor (height controlled by editor-height + resize handle)
+                            QueryEditor {
+                                editor-height: root.editor-height;
+                                sql-text <=> root.sql-text;
+                                executing: root.result-status == "Executing...";
+                                history-items: root.query-history-items;
+                                history-visible <=> root.history-visible;
+                                completion-items <=> root.completion-items;
+                                completion-visible <=> root.completion-visible;
+                                execute => { root.execute-query(); }
+                                history-selected(text) => { root.history-selected(text); }
+                                completion-selected(text) => { root.completion-selected(text); }
+                                text-changed(text) => { root.text-changed(text); }
+                            }
+
+                            // Draggable resize divider
+                            Rectangle {
+                                height: 6px;
+                                background: Tokens.color-border-hairline;
+                                opacity: 0.5;
+
+                                touch := TouchArea {
+                                    moved => {
+                                        if (touch.pressed) {
+                                            root.editor-height += touch.mouse-y - touch.pressed-y;
+                                            if (root.editor-height < 60px) { root.editor-height = 60px; }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Data grid (results)
+                            DataGrid {
+                                vertical-stretch: 1;
+                                columns: root.result-columns;
+                                rows: root.result-rows;
+                                has-results: root.has-results;
+                                status-text: root.result-status;
+                                error-text: root.result-error;
+                                export-csv => { root.export-csv(); }
+                                export-json => { root.export-json(); }
+                                clear-results => {
+                                    root.has-results = false;
+                                    root.result-status = "";
+                                    root.result-error = "";
+                                }
+                            }
+                        }
+                    }
+
+                    // Status bar — only under content area, not under tree
+                    StatusBar {
+                        left-text: root.status-left;
+                        right-text: root.status-right;
+                    }
+                }
+            }
+        }
+
+    }
+
+    // Connection form dialog
+    ConnectionFormDialog {
+        x: 0; y: 0;
+        width: parent.width;
+        height: parent.height;
+        open <=> root.connection-form-open;
+        connector-types: root.connector-types;
+        dialog-title: "New Connection";
+        conn-name <=> root.form-conn-name;
+        connector-type <=> root.form-connector-type;
+        host <=> root.form-host;
+        port-text <=> root.form-port-text;
+        database <=> root.form-database;
+        username <=> root.form-username;
+        password <=> root.form-password;
+        accepted => { root.connect-accepted(); }
+        dismissed => { root.connect-dismissed(); }
+        browse-file => { root.browse-file(); }
+    }
+
+    // Context menu overlay
+    if root.context-menu-visible: Rectangle {
+        x: 0; y: 0;
+        width: parent.width;
+        height: parent.height;
+
+        // Transparent scrim — clicking anywhere outside the menu dismisses it
+        scrim := TouchArea {
+            clicked => { root.context-menu-visible = false; }
+        }
+
+        // Context menu panel
+        Rectangle {
+            x: root.context-menu-x;
+            y: root.context-menu-y;
+            width: max(160px, menu-layout.preferred-width);
+            height: menu-layout.preferred-height;
+
+            background: Tokens.color-card;
+            border-color: Tokens.color-border-hairline;
+            border-width: 1px;
+            border-radius: 6px;
+            drop-shadow-blur: 8px;
+            drop-shadow-offset-y: 2px;
+            drop-shadow-color: rgba(0, 0, 0, 0.15);
+
+            menu-layout := VerticalLayout {
+                padding: 4px;
+                spacing: 2px;
+
+                // Delete
+                Rectangle {
+                    height: 32px;
+                    border-radius: 4px;
+                    background: delete-touch.has-hover ? Tokens.color-surface-1 : transparent;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        spacing: 8px;
+                        Text {
+                            text: "❌ Delete";
+                            color: Tokens.color-foreground;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    delete-touch := TouchArea {
+                        clicked => {
+                            root.context-menu-visible = false;
+                            root.delete-connection();
+                        }
+                    }
+                }
+            }
+
+            animate background { duration: Tokens.motion-fast; }
+        }
+    }
+}

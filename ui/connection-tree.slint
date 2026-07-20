@@ -1,0 +1,133 @@
+import { Tokens } from "slintcn/theme/tokens.slint";
+import { Icon } from "slintcn/components/icon.slint";
+import { LucidePaths } from "slintcn/components/lucide-paths.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export struct FlatTreeNode {
+    id: string,
+    label: string,
+    icon: string,
+    depth: int,
+    is_expandable: bool,
+    is_expanded: bool,
+    conn_id: int,
+    node-type: string,
+    color-r: int,
+    color-g: int,
+    color-b: int,
+}
+
+export component ConnectionTree inherits Rectangle {
+    in property <[FlatTreeNode]> nodes;
+    in-out property <string> active;
+    callback clicked(string);
+    callback expand-toggled(string);
+    callback right-clicked(string);
+
+    ScrollView {
+        width: parent.width;
+        height: parent.height;
+        viewport-height: tree_layout.min-height;
+
+        tree_layout := VerticalLayout {
+            spacing: 1px;
+            for node in root.nodes: Rectangle {
+            height: 32px;
+
+            // Full-row hover detection
+            hover-touch := TouchArea { }
+
+            background: node.id == root.active
+                ? Tokens.color-surface-2
+                : (hover-touch.has-hover ? Tokens.color-surface-1 : transparent);
+
+            HorizontalLayout {
+                padding-left: 8px + node.depth * 20px;
+                spacing: 4px;
+
+                // Expand/collapse arrow
+                if node.is_expandable: Rectangle {
+                    width: 20px;
+                    height: 100%;
+                    arrow-touch := TouchArea {
+                        pointer-event(event) => {
+                            if (event.kind == PointerEventKind.up
+                                && event.button == PointerEventButton.left) {
+                                root.expand-toggled(node.id);
+                            }
+                            if (event.kind == PointerEventKind.down
+                                && event.button == PointerEventButton.right) {
+                                root.active = node.id;
+                                root.right-clicked(node.id);
+                            }
+                        }
+                    }
+                    Icon {
+                        commands: node.is_expanded
+                            ? LucidePaths.chevron-down
+                            : LucidePaths.chevron-right;
+                        size: 14px;
+                        y: (parent.height - 16px) / 2;
+                        x: 2px;
+                        tint: Tokens.color-muted-foreground;
+                    }
+                }
+
+                // Spacer for non-expandable nodes
+                if !node.is_expandable: Rectangle { width: 20px; }
+
+                // Color dot (for connection nodes)
+                if node.color-r != 0 || node.color-g != 0 || node.color-b != 0: Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: rgb(node.color-r, node.color-g, node.color-b);
+                    y: (parent.height - 8px) / 2;
+                }
+
+                // Node icon
+                if node.icon != "": Rectangle {
+                    width: 16px;
+                    height: 16px;
+                    y: (parent.height - 16px) / 2;
+                    Icon {
+                        commands: node.icon;
+                        size: 14px;
+                        tint: Tokens.color-muted-foreground;
+                    }
+                }
+
+                // Label + row click area (stretches to fill remaining space)
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 100%;
+                    row-touch := TouchArea {
+                        pointer-event(event) => {
+                            if (event.kind == PointerEventKind.up
+                                && event.button == PointerEventButton.left) {
+                                root.active = node.id;
+                                root.clicked(node.id);
+                            }
+                            if (event.kind == PointerEventKind.down
+                                && event.button == PointerEventButton.right) {
+                                root.active = node.id;
+                                root.right-clicked(node.id);
+                            }
+                        }
+                    }
+                    Text {
+                        text: node.label;
+                        color: Tokens.color-foreground;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            animate background { duration: Tokens.motion-fast; easing: Tokens.motion-easing-standard; }
+        }
+        }
+    }
+}
