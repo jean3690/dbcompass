@@ -1,5 +1,11 @@
 # Changelog
 
+## [unreleased]
+
+### Chore
+
+- Update changelog for v0.1.1
+
 ## [v0.1.1] - 2026-07-20
 
 ### Chore
