@@ -57,7 +57,7 @@ impl DatabaseConnector for SqliteConnector {
 
         let _ = conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
 
-        let mut id_lock = self.next_id.lock().unwrap();
+        let mut id_lock = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
         let conn_id = *id_lock;
         *id_lock += 1;
 

@@ -64,7 +64,7 @@ impl DatabaseConnector for PostgresConnector {
         let client = postgres::Client::connect(&conn_str, postgres::NoTls)
             .map_err(|e| DbError::ConnectionFailed(e.to_string()))?;
 
-        let mut id_lock = self.next_id.lock().unwrap();
+        let mut id_lock = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
         let conn_id = *id_lock;
         *id_lock += 1;
 

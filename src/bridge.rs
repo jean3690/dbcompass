@@ -361,9 +361,22 @@ pub fn expand_connection(
         }
     };
 
+    // Get the actual database/schema name from config
+    let schema_name = if has_database {
+        let cm = app.connection_manager.lock().unwrap_or_else(|e| {
+            eprintln!("[bridge] Recovered from poisoned mutex");
+            e.into_inner()
+        });
+        cm.get(conn_id)
+            .map(|c| c.config.database.clone())
+            .unwrap_or_else(|| "main".to_string())
+    } else {
+        "main".to_string()
+    };
+
     if has_database {
         // Database specified → list tables directly
-        let tables = match connector.list_tables(conn_info.conn_id, "main") {
+        let tables = match connector.list_tables(conn_info.conn_id, &schema_name) {
             Ok(tables) => tables,
             Err(e) => {
                 window.set_status_left(slint::SharedString::from(format!(
@@ -596,6 +609,21 @@ pub fn expand_table(
             ac.get(conn_key).cloned()
         };
 
+        // Get the actual schema name from connection config
+        let schema_name = {
+            let cm = app.connection_manager.lock().unwrap_or_else(|e| {
+                eprintln!("[bridge] Recovered from poisoned mutex");
+                e.into_inner()
+            });
+            cm.get(conn_key)
+                .map(|c| if c.config.database.is_empty() {
+                    "main".to_string()
+                } else {
+                    c.config.database.clone()
+                })
+                .unwrap_or_else(|| "main".to_string())
+        };
+
         let columns = match conn_info {
             Some(ref info) => {
                 let pm = app.plugin_manager.lock().unwrap_or_else(|e| {
@@ -606,7 +634,7 @@ pub fn expand_table(
                     Some(c) => c,
                     None => return,
                 };
-                match connector.get_table_columns(info.conn_id, "main", table_name) {
+                match connector.get_table_columns(info.conn_id, &schema_name, table_name) {
                     Ok(cols) => cols,
                     Err(_) => return,
                 }
@@ -992,6 +1020,89 @@ pub fn update_query_history(app: &Arc<AppState>, window: &crate::MainWindow) {
         .collect();
     let model = slint::VecModel::from(items);
     window.set_query_history_items(slint::ModelRc::from(std::rc::Rc::new(model)));
+}
+
+// ── Edit connection ─────────────────────────────────────────
+
+pub fn populate_edit_form(
+    app: &Arc<AppState>,
+    window: &crate::MainWindow,
+    conn_id: &str,
+) {
+    let saved = {
+        let cm = app.connection_manager.lock().unwrap_or_else(|e| {
+            eprintln!("[bridge] Recovered from poisoned mutex");
+            e.into_inner()
+        });
+        cm.get(conn_id).cloned()
+    };
+
+    match saved {
+        Some(conn) => {
+            window.set_form_conn_name(slint::SharedString::from(&conn.name));
+            window.set_form_connector_type(slint::SharedString::from(&conn.connector_type));
+            window.set_form_host(slint::SharedString::from(&conn.config.host));
+            window.set_form_port_text(slint::SharedString::from(conn.config.port.to_string()));
+            window.set_form_database(slint::SharedString::from(&conn.config.database));
+            window.set_form_username(slint::SharedString::from(&conn.config.username));
+            window.set_form_password(slint::SharedString::from(&conn.config.password));
+            window.set_dialog_title(slint::SharedString::from("Edit Connection"));
+            window.set_connection_form_open(true);
+        }
+        None => {
+            window.set_status_left(slint::SharedString::from("Connection not found."));
+        }
+    }
+}
+
+// ── Test connection ─────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+pub fn test_connection(
+    app: &Arc<AppState>,
+    window: &crate::MainWindow,
+    connector_type: String,
+    host: String,
+    port: String,
+    database: String,
+    username: String,
+    password: String,
+) {
+    let pm = app.plugin_manager.lock().unwrap_or_else(|e| {
+        eprintln!("[bridge] Recovered from poisoned mutex");
+        e.into_inner()
+    });
+    let connector = match pm.get_connector(&connector_type) {
+        Some(c) => c,
+        None => {
+            window.set_status_left(slint::SharedString::from(format!(
+                "Connector '{}' not found",
+                connector_type
+            )));
+            return;
+        }
+    };
+
+    let port_num: u16 = port.parse().unwrap_or(0);
+    let config = ConnectorConfig {
+        host,
+        port: port_num,
+        database,
+        username,
+        password,
+        connection_string: None,
+        extra_params: Vec::new(),
+    };
+
+    match connector.connect(&config) {
+        Ok(conn_id) => {
+            let _ = connector.disconnect(conn_id);
+            window.set_status_left(slint::SharedString::from("✅ Connection successful!"));
+        }
+        Err(e) => {
+            window.set_status_left(slint::SharedString::from(format!("❌ Connection failed: {}", e)));
+        }
+    }
 }
 
 // ── Date helpers ────────────────────────────────────────────

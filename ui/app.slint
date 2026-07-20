@@ -24,6 +24,7 @@ export component MainWindow inherits Window {
     in-out property <bool> connection-form-open: false;
     callback connect-accepted();
     callback connect-dismissed();
+    callback test-connection();
 
     in-out property <string> form-conn-name: "";
     in-out property <string> form-connector-type: "";
@@ -55,6 +56,10 @@ export component MainWindow inherits Window {
     callback export-json();
     callback disconnect-connection();
     callback delete-connection();
+    callback edit-connection();
+
+    // --- Connection form dialog title ---
+    in-out property <string> dialog-title: "New Connection";
 
     // --- Status bar ---
     in property <string> status-left: "Ready";
@@ -247,7 +252,7 @@ export component MainWindow inherits Window {
         height: parent.height;
         open <=> root.connection-form-open;
         connector-types: root.connector-types;
-        dialog-title: "New Connection";
+        dialog-title <=> root.dialog-title;
         conn-name <=> root.form-conn-name;
         connector-type <=> root.form-connector-type;
         host <=> root.form-host;
@@ -258,6 +263,7 @@ export component MainWindow inherits Window {
         accepted => { root.connect-accepted(); }
         dismissed => { root.connect-dismissed(); }
         browse-file => { root.browse-file(); }
+        test-connection => { root.test-connection(); }
     }
 
     // Context menu overlay
@@ -289,6 +295,38 @@ export component MainWindow inherits Window {
             menu-layout := VerticalLayout {
                 padding: 4px;
                 spacing: 2px;
+
+                // Edit
+                Rectangle {
+                    height: 32px;
+                    border-radius: 4px;
+                    background: edit-touch.has-hover ? Tokens.color-surface-1 : transparent;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        spacing: 8px;
+                        Text {
+                            text: "✏️ Edit";
+                            color: Tokens.color-foreground;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    edit-touch := TouchArea {
+                        clicked => {
+                            root.context-menu-visible = false;
+                            root.edit-connection();
+                        }
+                    }
+                }
+
+                // Separator
+                Rectangle {
+                    height: 1px;
+                    background: Tokens.color-border-hairline;
+                }
 
                 // Delete
                 Rectangle {

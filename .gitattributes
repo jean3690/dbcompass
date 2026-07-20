@@ -1,0 +1,31 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Rust source
+*.rs text diff=rust
+*.toml text
+*.lock text
+
+# Slint UI files
+*.slint text
+
+# JavaScript/TypeScript
+*.js text
+*.mjs text
+*.json text
+
+# Markdown/docs
+*.md text diff=markdown
+
+# Shell scripts
+*.sh text eol=lf
+
+# Batch files
+*.bat text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary
+*.ttf binary

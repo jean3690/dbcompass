@@ -121,14 +121,20 @@ fn main() -> Result<(), slint::PlatformError> {
             let ctype = w.get_form_connector_type().to_string();
             let host = w.get_form_host().to_string();
             let port_text = w.get_form_port_text().to_string();
-            let port: u16 = match port_text.parse() {
-                Ok(p @ 1..) => p,
-                _ => {
-                    w.set_status_left(slint::SharedString::from(format!(
-                        "Invalid port: '{}'. Must be a number between 1 and 65535.",
-                        port_text
-                    )));
-                    return;
+            let port_val = port_text.trim().to_string();
+            let port: u16 = if port_val.is_empty() || port_val == "0" {
+                // SQLite and other file-based databases don't need a port
+                0
+            } else {
+                match port_val.parse() {
+                    Ok(p @ 1..) => p,
+                    _ => {
+                        w.set_status_left(slint::SharedString::from(format!(
+                            "Invalid port: '{}'. Must be a number between 1 and 65535.",
+                            port_text
+                        )));
+                        return;
+                    }
                 }
             };
             let database = w.get_form_database().to_string();
@@ -479,6 +485,41 @@ fn main() -> Result<(), slint::PlatformError> {
                 "Deleted connection: {}",
                 id
             )));
+        }
+    });
+
+    // ── Edit connection ──
+
+    let app_clone = app.clone();
+    let window_handle = window.as_weak();
+    window.on_edit_connection(move || {
+        if let Some(w) = window_handle.upgrade() {
+            let id = w.get_active_node().to_string();
+            if id.is_empty() || id.contains("__") {
+                return;
+            }
+            bridge::populate_edit_form(&app_clone, &w, &id);
+            w.set_dialog_title(slint::SharedString::from("Edit Connection"));
+        }
+    });
+
+    // ── Test connection ──
+
+    let app_clone = app.clone();
+    let window_handle = window.as_weak();
+    window.on_test_connection(move || {
+        if let Some(w) = window_handle.upgrade() {
+            let ctype = w.get_form_connector_type().to_string();
+            let host = w.get_form_host().to_string();
+            let port = w.get_form_port_text().to_string();
+            let database = w.get_form_database().to_string();
+            let username = w.get_form_username().to_string();
+            let password = w.get_form_password().to_string();
+
+            w.set_status_left(slint::SharedString::from("Testing connection..."));
+            bridge::test_connection(
+                &app_clone, &w, ctype, host, port, database, username, password,
+            );
         }
     });
 

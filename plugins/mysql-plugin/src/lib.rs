@@ -46,13 +46,13 @@ impl DatabaseConnector for MySqlConnector {
         let opts = mysql::OptsBuilder::new()
             .ip_or_hostname(Some(&config.host))
             .tcp_port(config.port)
-            .db_name(if config.database.is_empty() { None } else { Some(&config.database) })
+            .db_name(if config.database.is_empty() { None } else { Some(config.database.as_str()) })
             .user(Some(&config.username))
             .pass(Some(&config.password));
 
         let conn = mysql::Conn::new(opts).map_err(|e| DbError::ConnectionFailed(e.to_string()))?;
 
-        let mut id_lock = self.next_id.lock().unwrap();
+        let mut id_lock = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
         let conn_id = *id_lock;
         *id_lock += 1;
 

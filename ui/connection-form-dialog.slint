@@ -20,6 +20,7 @@ export component ConnectionFormDialog inherits Rectangle {
     callback accepted();
     callback dismissed();
     callback browse-file();
+    callback test-connection();
 
     Dialog {
         open <=> root.open;
@@ -139,6 +140,17 @@ export component ConnectionFormDialog inherits Rectangle {
             HorizontalLayout {
                 alignment: end;
                 spacing: 8px;
+                Button {
+                    text: "Test";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.outline;
+                    disabled: root.conn-name == ""
+                        || root.connector-type == ""
+                        || (root.connector-type == "SQLite" && root.database == "")
+                        || (root.connector-type != "SQLite" && root.host == "");
+                    clicked => { root.test-connection(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
                 Button {
                     text: "Cancel";
                     size: ButtonSize.sm;
