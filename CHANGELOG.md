@@ -1,8 +1,22 @@
 # Changelog
 
-## [v0.1.2] - 2026-07-20
+## [v0.2.0] - 2026-07-21
 
-### Chore
+### Features
+
+- 连接树节点显示在线/离线状态指示器（绿灯/灰灯）
+- 启动时自动重连上次会话的数据库连接
+- 工具栏增加事务控制按钮（Begin Tx / Commit / Rollback）
+- 点击表节点自动生成 SELECT * LIMIT N 并执行
+- 结果网格增加行编辑功能（Edit 生成 UPDATE，Delete 生成 DELETE SQL）
+
+### Fixes
+
+- 修复 Slint 布局绑定循环警告（侧边栏冗余 Rectangle 嵌套）
+- 修复所有 clippy::collapsible_if 和 clippy::cloned 警告
+- 代码通过 `cargo fmt` / `cargo clippy -D warnings` / `cargo test` 零错误
+
+## [v0.1.2] - 2026-07-20
 
 - Release
 - Update changelog
