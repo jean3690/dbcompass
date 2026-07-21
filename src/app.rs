@@ -77,6 +77,41 @@ impl AppState {
         lock_mutex(&self.query_history).clone()
     }
 
+    // ── Auto-reconnect session persistence ──
+
+    fn session_path(&self) -> PathBuf {
+        self.data_dir.join("last_session.json")
+    }
+
+    /// Save the names of currently active connections for auto-reconnect on next launch.
+    pub fn save_last_session(&self) {
+        let ac = lock_mutex(&self.active_connections);
+        let names: Vec<&String> = ac.keys().collect();
+        let path = self.session_path();
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            eprintln!("[app] Failed to create session directory: {e}");
+            return;
+        }
+        if let Ok(content) = serde_json::to_string(&names)
+            && let Err(e) = std::fs::write(&path, content)
+        {
+            eprintln!("[app] Failed to write session file: {e}");
+        }
+    }
+
+    /// Load the list of connection names from the last session.
+    pub fn load_last_session(&self) -> Vec<String> {
+        let path = self.session_path();
+        if let Ok(content) = std::fs::read_to_string(&path)
+            && let Ok(names) = serde_json::from_str::<Vec<String>>(&content)
+        {
+            return names;
+        }
+        Vec::new()
+    }
+
     fn history_path(&self) -> PathBuf {
         self.data_dir.join("query_history.json")
     }

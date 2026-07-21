@@ -46,7 +46,11 @@ impl DatabaseConnector for MySqlConnector {
         let opts = mysql::OptsBuilder::new()
             .ip_or_hostname(Some(&config.host))
             .tcp_port(config.port)
-            .db_name(if config.database.is_empty() { None } else { Some(config.database.as_str()) })
+            .db_name(if config.database.is_empty() {
+                None
+            } else {
+                Some(config.database.as_str())
+            })
             .user(Some(&config.username))
             .pass(Some(&config.password));
 

@@ -15,6 +15,7 @@ export struct FlatTreeNode {
     color-r: int,
     color-g: int,
     color-b: int,
+    connected: bool,
 }
 
 export component ConnectionTree inherits Rectangle {
@@ -75,6 +76,15 @@ export component ConnectionTree inherits Rectangle {
 
                 // Spacer for non-expandable nodes
                 if !node.is_expandable: Rectangle { width: 20px; }
+
+                // Connection status indicator (only for connection nodes)
+                if node.node-type == "connection": Rectangle {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 4px;
+                    background: node.connected ? #4ade80 : #6b7280;
+                    y: (parent.height - 7px) / 2;
+                }
 
                 // Color dot (for connection nodes)
                 if node.color-r != 0 || node.color-g != 0 || node.color-b != 0: Rectangle {

@@ -63,7 +63,6 @@ impl TreeCache {
             expanded_tables: HashMap::new(),
         }
     }
-
 }
 
 const CONNECTION_COLORS: &[&str] = &[
@@ -92,17 +91,22 @@ fn hex_to_rgb(hex: &str) -> (i32, i32, i32) {
 /// Build flat tree nodes: saved connections only (no expanded children).
 pub fn build_connection_tree(
     cm: &crate::connection_manager::ConnectionManager,
+    active_connections: &std::collections::HashMap<String, crate::app::ActiveConnection>,
     filter_text: &str,
 ) -> Vec<crate::FlatTreeNode> {
     let mut nodes = Vec::new();
     for conn in cm.list() {
         // Apply filter at connection level
         if !filter_text.is_empty()
-            && !conn.name.to_lowercase().contains(&filter_text.to_lowercase())
+            && !conn
+                .name
+                .to_lowercase()
+                .contains(&filter_text.to_lowercase())
         {
             continue;
         }
         let (r, g, b) = hex_to_rgb(&conn.color);
+        let connected = active_connections.contains_key(&conn.id);
         nodes.push(crate::FlatTreeNode {
             id: slint::SharedString::from(&conn.id),
             label: slint::SharedString::from(&conn.name),
@@ -115,6 +119,7 @@ pub fn build_connection_tree(
             color_r: r,
             color_g: g,
             color_b: b,
+            connected,
         });
     }
     nodes
@@ -140,6 +145,7 @@ fn matches_filter(text: &str, filter_text: &str) -> bool {
 pub fn build_tree_with_children(
     cm: &crate::connection_manager::ConnectionManager,
     cache: &TreeCache,
+    active_connections: &std::collections::HashMap<String, crate::app::ActiveConnection>,
     filter_text: &str,
 ) -> Vec<crate::FlatTreeNode> {
     let mut nodes = Vec::new();
@@ -154,47 +160,50 @@ pub fn build_tree_with_children(
 
         if !filter_text.is_empty() && !conn_matches {
             // Check if any child (database/table/column) matches
-            if has_databases {
-                if let Some(dbs) = cache.expanded_databases.get(&conn.id) {
-                    for db_name in dbs {
-                        if matches_filter(db_name, filter_text) {
-                            children_have_match = true;
-                            break;
-                        }
-                        let db_node_id = format!("{}__{}", conn.id, db_name);
-                        if let Some(tables) = cache.expanded_db_tables.get(&db_node_id) {
-                            for t in tables {
-                                if matches_filter(&t.table_name, filter_text) {
-                                    children_have_match = true;
-                                    break;
-                                }
-                                if let Some(cols) = cache.expanded_tables.get(&t.node_id) {
-                                    if cols.iter().any(|c| matches_filter(&c.column_name, filter_text)) {
-                                        children_have_match = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        if children_have_match {
-                            break;
-                        }
+            if has_databases && let Some(dbs) = cache.expanded_databases.get(&conn.id) {
+                for db_name in dbs {
+                    if matches_filter(db_name, filter_text) {
+                        children_have_match = true;
+                        break;
                     }
-                }
-            }
-            if !children_have_match && has_tables {
-                if let Some(children) = cache.expanded_connections.get(&conn.id) {
-                    for child in children {
-                        if matches_filter(&child.table_name, filter_text) {
-                            children_have_match = true;
-                            break;
-                        }
-                        if let Some(cols) = cache.expanded_tables.get(&child.node_id) {
-                            if cols.iter().any(|c| matches_filter(&c.column_name, filter_text)) {
+                    let db_node_id = format!("{}__{}", conn.id, db_name);
+                    if let Some(tables) = cache.expanded_db_tables.get(&db_node_id) {
+                        for t in tables {
+                            if matches_filter(&t.table_name, filter_text) {
+                                children_have_match = true;
+                                break;
+                            }
+                            if let Some(cols) = cache.expanded_tables.get(&t.node_id)
+                                && cols
+                                    .iter()
+                                    .any(|c| matches_filter(&c.column_name, filter_text))
+                            {
                                 children_have_match = true;
                                 break;
                             }
                         }
+                    }
+                    if children_have_match {
+                        break;
+                    }
+                }
+            }
+            if !children_have_match
+                && has_tables
+                && let Some(children) = cache.expanded_connections.get(&conn.id)
+            {
+                for child in children {
+                    if matches_filter(&child.table_name, filter_text) {
+                        children_have_match = true;
+                        break;
+                    }
+                    if let Some(cols) = cache.expanded_tables.get(&child.node_id)
+                        && cols
+                            .iter()
+                            .any(|c| matches_filter(&c.column_name, filter_text))
+                    {
+                        children_have_match = true;
+                        break;
                     }
                 }
             }
@@ -203,8 +212,8 @@ pub fn build_tree_with_children(
         if !filter_text.is_empty() && !conn_matches && !children_have_match {
             continue;
         }
-
         let (r, g, b) = hex_to_rgb(&conn.color);
+        let connected = active_connections.contains_key(&conn.id);
         nodes.push(crate::FlatTreeNode {
             id: slint::SharedString::from(&conn.id),
             label: slint::SharedString::from(&conn.name),
@@ -217,6 +226,7 @@ pub fn build_tree_with_children(
             color_r: r,
             color_g: g,
             color_b: b,
+            connected,
         });
 
         // If expanded with databases (no specific database configured)
@@ -227,19 +237,22 @@ pub fn build_tree_with_children(
 
                 let db_matches = matches_filter(db_name, filter_text);
                 let mut db_children_match = false;
-                if !filter_text.is_empty() && !db_matches {
-                    if let Some(tables) = cache.expanded_db_tables.get(&db_node_id) {
-                        for t in tables {
-                            if matches_filter(&t.table_name, filter_text) {
-                                db_children_match = true;
-                                break;
-                            }
-                            if let Some(cols) = cache.expanded_tables.get(&t.node_id) {
-                                if cols.iter().any(|c| matches_filter(&c.column_name, filter_text)) {
-                                    db_children_match = true;
-                                    break;
-                                }
-                            }
+                if !filter_text.is_empty()
+                    && !db_matches
+                    && let Some(tables) = cache.expanded_db_tables.get(&db_node_id)
+                {
+                    for t in tables {
+                        if matches_filter(&t.table_name, filter_text) {
+                            db_children_match = true;
+                            break;
+                        }
+                        if let Some(cols) = cache.expanded_tables.get(&t.node_id)
+                            && cols
+                                .iter()
+                                .any(|c| matches_filter(&c.column_name, filter_text))
+                        {
+                            db_children_match = true;
+                            break;
                         }
                     }
                 }
@@ -260,6 +273,7 @@ pub fn build_tree_with_children(
                     color_r: 0,
                     color_g: 0,
                     color_b: 0,
+                    connected: false,
                 });
 
                 // Show tables under this database
@@ -277,10 +291,13 @@ pub fn build_tree_with_children(
                         // Check if any column matches when table name doesn't
                         let tbl_matches = matches_filter(&t.table_name, filter_text);
                         let mut col_matches = false;
-                        if !tbl_matches && tbl_expanded {
-                            if let Some(cols) = cache.expanded_tables.get(&t.node_id) {
-                                col_matches = cols.iter().any(|c| matches_filter(&c.column_name, filter_text));
-                            }
+                        if !tbl_matches
+                            && tbl_expanded
+                            && let Some(cols) = cache.expanded_tables.get(&t.node_id)
+                        {
+                            col_matches = cols
+                                .iter()
+                                .any(|c| matches_filter(&c.column_name, filter_text));
                         }
                         if !filter_text.is_empty() && !tbl_matches && !col_matches {
                             continue;
@@ -298,12 +315,11 @@ pub fn build_tree_with_children(
                             color_r: 0,
                             color_g: 0,
                             color_b: 0,
+                            connected: false,
                         });
 
                         // Show column children if table expanded
-                        if tbl_expanded
-                            && let Some(cols) = cache.expanded_tables.get(&t.node_id)
-                        {
+                        if tbl_expanded && let Some(cols) = cache.expanded_tables.get(&t.node_id) {
                             for col in cols {
                                 if !filter_text.is_empty()
                                     && !matches_filter(&col.column_name, filter_text)
@@ -322,6 +338,7 @@ pub fn build_tree_with_children(
                                     color_r: 0,
                                     color_g: 0,
                                     color_b: 0,
+                                    connected: false,
                                 });
                             }
                         }
@@ -344,10 +361,13 @@ pub fn build_tree_with_children(
 
                 let tbl_matches = matches_filter(&child.table_name, filter_text);
                 let mut col_matches = false;
-                if !tbl_matches && tbl_expanded {
-                    if let Some(cols) = cache.expanded_tables.get(&child.node_id) {
-                        col_matches = cols.iter().any(|c| matches_filter(&c.column_name, filter_text));
-                    }
+                if !tbl_matches
+                    && tbl_expanded
+                    && let Some(cols) = cache.expanded_tables.get(&child.node_id)
+                {
+                    col_matches = cols
+                        .iter()
+                        .any(|c| matches_filter(&c.column_name, filter_text));
                 }
                 if !filter_text.is_empty() && !tbl_matches && !col_matches {
                     continue;
@@ -365,13 +385,13 @@ pub fn build_tree_with_children(
                     color_r: 0,
                     color_g: 0,
                     color_b: 0,
+                    connected: false,
                 });
 
                 // Show column children if table expanded
                 if tbl_expanded && let Some(cols) = cache.expanded_tables.get(&child.node_id) {
                     for col in cols {
-                        if !filter_text.is_empty()
-                            && !matches_filter(&col.column_name, filter_text)
+                        if !filter_text.is_empty() && !matches_filter(&col.column_name, filter_text)
                         {
                             continue;
                         }
@@ -387,6 +407,7 @@ pub fn build_tree_with_children(
                             color_r: 0,
                             color_g: 0,
                             color_b: 0,
+                            connected: false,
                         });
                     }
                 }
@@ -432,9 +453,7 @@ pub fn expand_connection(
             let saved = match saved {
                 Some(s) => s,
                 None => {
-                    window.set_status_left(slint::SharedString::from(
-                        "Connection not found.",
-                    ));
+                    window.set_status_left(slint::SharedString::from("Connection not found."));
                     return;
                 }
             };
@@ -611,11 +630,15 @@ pub fn expand_connection(
     }
 
     let filter_text = get_tree_filter(app);
+    let active = app.active_connections.lock().unwrap_or_else(|e| {
+        eprintln!("[bridge] Recovered from poisoned mutex");
+        e.into_inner()
+    });
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_tree_with_children(&cm, cache, &filter_text);
+    let nodes = build_tree_with_children(&cm, cache, &active, &filter_text);
     push_tree(window, nodes);
 }
 
@@ -692,13 +715,16 @@ pub fn expand_database_tables(
         .insert(node_id.to_string(), children);
 
     let filter_text = get_tree_filter(app);
+    let active = app.active_connections.lock().unwrap_or_else(|e| {
+        eprintln!("[bridge] Recovered from poisoned mutex");
+        e.into_inner()
+    });
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_tree_with_children(&cm, cache, &filter_text);
+    let nodes = build_tree_with_children(&cm, cache, &active, &filter_text);
     push_tree(window, nodes);
-
     window.set_status_left(slint::SharedString::from(format!(
         "{} tables loaded from {}",
         tables.len(),
@@ -716,11 +742,15 @@ pub fn collapse_database_tables(
     cache.expanded_db_tables.remove(node_id);
 
     let filter_text = get_tree_filter(app);
+    let active = app.active_connections.lock().unwrap_or_else(|e| {
+        eprintln!("[bridge] Recovered from poisoned mutex");
+        e.into_inner()
+    });
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_tree_with_children(&cm, cache, &filter_text);
+    let nodes = build_tree_with_children(&cm, cache, &active, &filter_text);
     push_tree(window, nodes);
 }
 
@@ -741,11 +771,15 @@ pub fn collapse_connection(
     }
 
     let filter_text = get_tree_filter(app);
+    let active = app.active_connections.lock().unwrap_or_else(|e| {
+        eprintln!("[bridge] Recovered from poisoned mutex");
+        e.into_inner()
+    });
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_tree_with_children(&cm, cache, &filter_text);
+    let nodes = build_tree_with_children(&cm, cache, &active, &filter_text);
     push_tree(window, nodes);
 }
 
@@ -776,10 +810,12 @@ pub fn expand_table(
                 e.into_inner()
             });
             cm.get(conn_key)
-                .map(|c| if c.config.database.is_empty() {
-                    "main".to_string()
-                } else {
-                    c.config.database.clone()
+                .map(|c| {
+                    if c.config.database.is_empty() {
+                        "main".to_string()
+                    } else {
+                        c.config.database.clone()
+                    }
                 })
                 .unwrap_or_else(|| "main".to_string())
         };
@@ -829,11 +865,15 @@ pub fn expand_table(
             .insert(node_id.to_string(), col_entries);
 
         let filter_text = get_tree_filter(app);
+        let active = app.active_connections.lock().unwrap_or_else(|e| {
+            eprintln!("[bridge] Recovered from poisoned mutex");
+            e.into_inner()
+        });
         let cm = app.connection_manager.lock().unwrap_or_else(|e| {
             eprintln!("[bridge] Recovered from poisoned mutex");
             e.into_inner()
         });
-        let nodes = build_tree_with_children(&cm, cache, &filter_text);
+        let nodes = build_tree_with_children(&cm, cache, &active, &filter_text);
         push_tree(window, nodes);
     }
 }
@@ -848,11 +888,15 @@ pub fn collapse_table(
     cache.expanded_tables.remove(node_id);
 
     let filter_text = get_tree_filter(app);
+    let active = app.active_connections.lock().unwrap_or_else(|e| {
+        eprintln!("[bridge] Recovered from poisoned mutex");
+        e.into_inner()
+    });
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_tree_with_children(&cm, cache, &filter_text);
+    let nodes = build_tree_with_children(&cm, cache, &active, &filter_text);
     push_tree(window, nodes);
 }
 
@@ -922,11 +966,15 @@ pub fn refresh_tree(app: &Arc<AppState>, window: &crate::MainWindow) {
         });
         ft.clone()
     };
+    let active = app.active_connections.lock().unwrap_or_else(|e| {
+        eprintln!("[bridge] Recovered from poisoned mutex");
+        e.into_inner()
+    });
     let cm = app.connection_manager.lock().unwrap_or_else(|e| {
         eprintln!("[bridge] Recovered from poisoned mutex");
         e.into_inner()
     });
-    let nodes = build_connection_tree(&cm, &filter_text);
+    let nodes = build_connection_tree(&cm, &active, &filter_text);
     push_tree(window, nodes);
 }
 
@@ -970,6 +1018,7 @@ pub fn disconnect_connection(
         ac.remove(conn_id);
     }
 
+    app.save_last_session();
     // Refresh tree
     refresh_tree(app, window);
     window.set_status_left(slint::SharedString::from(format!(
@@ -1068,6 +1117,7 @@ pub fn connect_to_database(
             }
             drop(cm);
 
+            app.save_last_session();
             refresh_tree(app, window);
         }
         Err(e) => {
@@ -1079,6 +1129,67 @@ pub fn connect_to_database(
     }
 }
 
+// ── Auto-reconnect ──────────────────────────────────────────
+
+/// Attempt to reconnect to all connections from the last session.
+pub fn auto_reconnect_last_session(app: &Arc<AppState>, window: &crate::MainWindow) {
+    let names = app.load_last_session();
+    if names.is_empty() {
+        return;
+    }
+
+    // Collect connection configs first (avoids holding cm lock during connect)
+    let to_reconnect: Vec<(String, String, ConnectorConfig)> = {
+        let cm = app.connection_manager.lock().unwrap_or_else(|e| {
+            eprintln!("[bridge] Recovered from poisoned mutex");
+            e.into_inner()
+        });
+        names
+            .iter()
+            .filter_map(|name| {
+                cm.get(name).map(|saved| {
+                    (
+                        name.clone(),
+                        saved.connector_type.clone(),
+                        saved.config.clone(),
+                    )
+                })
+            })
+            .collect()
+    };
+
+    for (name, connector_type, config) in &to_reconnect {
+        let pm = app.plugin_manager.lock().unwrap_or_else(|e| {
+            eprintln!("[bridge] Recovered from poisoned mutex");
+            e.into_inner()
+        });
+        if let Some(connector) = pm.get_connector(connector_type) {
+            match connector.connect(config) {
+                Ok(conn_id) => {
+                    let mut ac = app.active_connections.lock().unwrap_or_else(|e| {
+                        eprintln!("[bridge] Recovered from poisoned mutex");
+                        e.into_inner()
+                    });
+                    ac.insert(
+                        name.clone(),
+                        ActiveConnection {
+                            conn_id,
+                            connector_name: connector_type.clone(),
+                        },
+                    );
+                    window.set_status_left(slint::SharedString::from(format!(
+                        "Auto-reconnected: {}",
+                        name
+                    )));
+                }
+                Err(e) => {
+                    eprintln!("[bridge] Auto-reconnect failed for '{}': {}", name, e);
+                }
+            }
+        }
+    }
+    refresh_tree(app, window);
+}
 // ── Query execution ─────────────────────────────────────────
 
 pub fn execute_on_first_connection(app: &Arc<AppState>, window: &crate::MainWindow, sql: String) {
@@ -1145,7 +1256,7 @@ pub fn apply_query_result(w: &crate::MainWindow, view: &QueryResultView) {
         let null_flags: Vec<bool> = view
             .null_cells
             .get(row_idx)
-            .map(|nc| nc.clone())
+            .cloned()
             .unwrap_or_else(|| vec![false; row.len()]);
         slint_rows.push(crate::TableRow {
             cells: slint::ModelRc::from(Rc::new(slint::VecModel::from(cells))),
@@ -1226,11 +1337,7 @@ pub fn update_query_history(app: &Arc<AppState>, window: &crate::MainWindow) {
 
 // ── Edit connection ─────────────────────────────────────────
 
-pub fn populate_edit_form(
-    app: &Arc<AppState>,
-    window: &crate::MainWindow,
-    conn_id: &str,
-) {
+pub fn populate_edit_form(app: &Arc<AppState>, window: &crate::MainWindow, conn_id: &str) {
     let saved = {
         let cm = app.connection_manager.lock().unwrap_or_else(|e| {
             eprintln!("[bridge] Recovered from poisoned mutex");
@@ -1302,11 +1409,165 @@ pub fn test_connection(
             window.set_status_left(slint::SharedString::from("✅ Connection successful!"));
         }
         Err(e) => {
-            window.set_status_left(slint::SharedString::from(format!("❌ Connection failed: {}", e)));
+            window.set_status_left(slint::SharedString::from(format!(
+                "❌ Connection failed: {}",
+                e
+            )));
         }
     }
 }
 
+// ── Transaction support ─────────────────────────────────────
+
+/// Execute a transaction control SQL (BEGIN/COMMIT/ROLLBACK) on a connection.
+/// `entering` true = entering transaction (BEGIN), false = leaving (COMMIT/ROLLBACK).
+pub fn execute_transaction_sql(
+    app: &Arc<AppState>,
+    window: &crate::MainWindow,
+    connector_name: &str,
+    conn_id: u64,
+    sql: &str,
+    entering: bool,
+) {
+    window.set_in_transaction(entering);
+    window.set_result_error(slint::SharedString::from(""));
+    window.set_result_status(slint::SharedString::from("Executing..."));
+
+    let app = app.clone();
+    let window_weak = window.as_weak();
+    let sql_owned = sql.to_string();
+    let sql_for_query = sql_owned.clone();
+
+    query_executor::execute_query(
+        &app,
+        connector_name,
+        conn_id,
+        sql_for_query,
+        None,
+        Box::new(move |view: QueryResultView| {
+            if let Some(w) = window_weak.upgrade() {
+                if view.error.is_some() {
+                    // If transaction command failed, revert state
+                    w.set_in_transaction(!entering);
+                    apply_query_result(&w, &view);
+                } else {
+                    let label = match sql_owned.as_str() {
+                        "BEGIN" => "Transaction started",
+                        "COMMIT" => "Transaction committed",
+                        "ROLLBACK" => "Transaction rolled back",
+                        _ => "Transaction command executed",
+                    };
+                    w.set_result_status(slint::SharedString::from(label));
+                    w.set_has_results(false);
+                }
+            }
+        }),
+    );
+}
+
+// ── Row editing helpers ────────────────────────────────────
+
+/// Build an UPDATE SQL statement from the currently displayed result row.
+/// Uses the first column as the primary key for the WHERE clause.
+pub fn build_edit_row_sql(window: &crate::MainWindow, row_idx: usize) -> String {
+    use slint::Model;
+
+    let cols_model = window.get_result_columns();
+    let rows_model = window.get_result_rows();
+
+    if row_idx >= rows_model.row_count() as usize {
+        return String::new();
+    }
+
+    let headers: Vec<String> = (0..cols_model.row_count())
+        .map(|i| cols_model.row_data(i).unwrap_or_default().to_string())
+        .collect();
+
+    if headers.is_empty() {
+        return String::new();
+    }
+
+    let row = match rows_model.row_data(row_idx) {
+        Some(r) => r,
+        None => return String::new(),
+    };
+
+    let cells: Vec<String> = (0..row.cells.row_count())
+        .map(|j| row.cells.row_data(j).unwrap_or_default().to_string())
+        .collect();
+
+    // Build SET clause (skip first column which is used as PK in WHERE)
+    let mut set_parts = Vec::new();
+    for (i, h) in headers.iter().enumerate().skip(1) {
+        if i < cells.len() {
+            let val = if cells[i] == "NULL" {
+                "NULL".to_string()
+            } else {
+                format!("'{}'", cells[i].replace('\'', "''"))
+            };
+            set_parts.push(format!("\"{}\" = {}", h, val));
+        }
+    }
+
+    if set_parts.is_empty() || cells.is_empty() {
+        return String::new();
+    }
+
+    let pk_val = if cells[0] == "NULL" {
+        "NULL".to_string()
+    } else {
+        format!("'{}'", cells[0].replace('\'', "''"))
+    };
+
+    format!(
+        "UPDATE table_name SET\n    {}\nWHERE \"{}\" = {};",
+        set_parts.join(",\n    "),
+        headers[0],
+        pk_val
+    )
+}
+
+/// Build a DELETE SQL statement from the currently displayed result row.
+pub fn build_delete_row_sql(window: &crate::MainWindow, row_idx: usize) -> String {
+    use slint::Model;
+
+    let cols_model = window.get_result_columns();
+    let rows_model = window.get_result_rows();
+
+    if row_idx >= rows_model.row_count() as usize {
+        return String::new();
+    }
+
+    let headers: Vec<String> = (0..cols_model.row_count())
+        .map(|i| cols_model.row_data(i).unwrap_or_default().to_string())
+        .collect();
+
+    if headers.is_empty() {
+        return String::new();
+    }
+
+    let row = match rows_model.row_data(row_idx) {
+        Some(r) => r,
+        None => return String::new(),
+    };
+
+    let pk_val = match row.cells.row_data(0) {
+        Some(cell) => {
+            let s = cell.to_string();
+            if s == "NULL" {
+                "NULL".to_string()
+            } else {
+                format!("'{}'", s.replace('\'', "''"))
+            }
+        }
+        None => return String::new(),
+    };
+
+    format!(
+        "DELETE FROM table_name WHERE \"{}\" = {};",
+        headers[0], pk_val
+    )
+}
 // ── Date helpers ────────────────────────────────────────────
 
 fn chrono_now() -> String {

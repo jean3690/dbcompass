@@ -42,6 +42,9 @@ fn main() -> Result<(), slint::PlatformError> {
     bridge::populate_connectors(&app, &window);
     bridge::refresh_tree(&app, &window);
 
+    // Auto-reconnect to connections from last session
+    bridge::auto_reconnect_last_session(&app, &window);
+
     // ── Tree node clicked (select connection / auto-fill table) ──
 
     let app_clone = app.clone();
@@ -302,6 +305,93 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
+    // ── Transaction: Begin ──
+
+    let app_clone = app.clone();
+    let window_handle = window.as_weak();
+    window.on_begin_transaction(move || {
+        if let Some(w) = window_handle.upgrade() {
+            let active_id = w.get_active_node().to_string();
+            if !active_id.is_empty() && !active_id.contains("__") {
+                let ac = app_clone.active_connections.lock().unwrap_or_else(|e| {
+                    eprintln!("[main] Recovered from poisoned mutex");
+                    e.into_inner()
+                });
+                if let Some(conn) = ac.get(&active_id) {
+                    let connector_name = conn.connector_name.clone();
+                    let conn_id = conn.conn_id;
+                    drop(ac);
+                    bridge::execute_transaction_sql(
+                        &app_clone,
+                        &w,
+                        &connector_name,
+                        conn_id,
+                        "BEGIN",
+                        true,
+                    );
+                }
+            }
+        }
+    });
+
+    // ── Transaction: Commit ──
+
+    let app_clone = app.clone();
+    let window_handle = window.as_weak();
+    window.on_commit_transaction(move || {
+        if let Some(w) = window_handle.upgrade() {
+            let active_id = w.get_active_node().to_string();
+            if !active_id.is_empty() && !active_id.contains("__") {
+                let ac = app_clone.active_connections.lock().unwrap_or_else(|e| {
+                    eprintln!("[main] Recovered from poisoned mutex");
+                    e.into_inner()
+                });
+                if let Some(conn) = ac.get(&active_id) {
+                    let connector_name = conn.connector_name.clone();
+                    let conn_id = conn.conn_id;
+                    drop(ac);
+                    bridge::execute_transaction_sql(
+                        &app_clone,
+                        &w,
+                        &connector_name,
+                        conn_id,
+                        "COMMIT",
+                        false,
+                    );
+                }
+            }
+        }
+    });
+
+    // ── Transaction: Rollback ──
+
+    let app_clone = app.clone();
+    let window_handle = window.as_weak();
+    window.on_rollback_transaction(move || {
+        if let Some(w) = window_handle.upgrade() {
+            let active_id = w.get_active_node().to_string();
+            if !active_id.is_empty() && !active_id.contains("__") {
+                let ac = app_clone.active_connections.lock().unwrap_or_else(|e| {
+                    eprintln!("[main] Recovered from poisoned mutex");
+                    e.into_inner()
+                });
+                if let Some(conn) = ac.get(&active_id) {
+                    let connector_name = conn.connector_name.clone();
+                    let conn_id = conn.conn_id;
+                    drop(ac);
+                    bridge::execute_transaction_sql(
+                        &app_clone,
+                        &w,
+                        &connector_name,
+                        conn_id,
+                        "ROLLBACK",
+                        false,
+                    );
+                }
+            }
+        }
+    });
+
     // Initial history load
     bridge::update_query_history(&app, &window);
 
@@ -436,6 +526,32 @@ fn main() -> Result<(), slint::PlatformError> {
                     path.display()
                 )));
             }
+        }
+    });
+
+    // ── Edit row (build UPDATE SQL) ──
+
+    let window_handle = window.as_weak();
+    window.on_edit_row(move |row_idx: i32| {
+        if let Some(w) = window_handle.upgrade() {
+            if row_idx < 0 {
+                return;
+            }
+            let sql = bridge::build_edit_row_sql(&w, row_idx as usize);
+            w.set_sql_text(slint::SharedString::from(sql));
+        }
+    });
+
+    // ── Delete row (build DELETE SQL) ──
+
+    let window_handle = window.as_weak();
+    window.on_delete_row(move |row_idx: i32| {
+        if let Some(w) = window_handle.upgrade() {
+            if row_idx < 0 {
+                return;
+            }
+            let sql = bridge::build_delete_row_sql(&w, row_idx as usize);
+            w.set_sql_text(slint::SharedString::from(sql));
         }
     });
 

@@ -57,7 +57,8 @@ export component MainWindow inherits Window {
     callback disconnect-connection();
     callback delete-connection();
     callback edit-connection();
-
+    callback edit-row(int);
+    callback delete-row(int);
     // --- Connection form dialog title ---
     in-out property <string> dialog-title: "New Connection";
 
@@ -81,6 +82,11 @@ export component MainWindow inherits Window {
     in-out property <string> filter-text: "";
     callback filter-changed(string);
 
+    // --- Transaction support ---
+    in-out property <bool> in-transaction: false;
+    callback begin-transaction();
+    callback commit-transaction();
+    callback rollback-transaction();
     // --- Layout ---
 
     VerticalLayout {
@@ -117,6 +123,28 @@ export component MainWindow inherits Window {
                     clicked => { root.delete-connection(); }
                 }
 
+                // Transaction buttons
+                Button {
+                    text: "Begin Tx";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.outline;
+                    disabled: root.active-node == "" || root.in-transaction;
+                    clicked => { root.begin-transaction(); }
+                }
+                Button {
+                    text: "Commit";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.outline;
+                    disabled: !root.in-transaction;
+                    clicked => { root.commit-transaction(); }
+                }
+                Button {
+                    text: "Rollback";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.outline;
+                    disabled: !root.in-transaction;
+                    clicked => { root.rollback-transaction(); }
+                }
                 Rectangle { horizontal-stretch: 1; }
 
                 Text {
@@ -155,55 +183,51 @@ export component MainWindow inherits Window {
                 clip: true;
                 background: Tokens.color-card;
 
-                Rectangle {
-                    width: parent.width;
-                    height: parent.height;
-                    VerticalLayout {
-                        spacing: 4px;
-                        padding: 6px;
-                        padding-bottom: 0px;
+                VerticalLayout {
+                    spacing: 4px;
+                    padding: 6px;
+                    padding-bottom: 0px;
 
-                        // Search / filter input
-                        Rectangle {
-                            height: 28px;
-                            background: Tokens.color-surface-1;
-                            border-color: Tokens.color-border-hairline;
-                            border-width: 1px;
-                            border-radius: Tokens.radius-sm;
+                    // Search / filter input
+                    Rectangle {
+                        height: 28px;
+                        background: Tokens.color-surface-1;
+                        border-color: Tokens.color-border-hairline;
+                        border-width: 1px;
+                        border-radius: Tokens.radius-sm;
 
-                            HorizontalLayout {
-                                padding-left: 8px;
-                                spacing: 4px;
-                                Text {
-                                    text: "🔍";
-                                    font-size: 12px;
-                                    vertical-alignment: center;
-                                }
-                                TextInput {
-                                    width: parent.width - 30px;
-                                    height: parent.height;
-                                    text <=> root.filter-text;
-                                    color: Tokens.color-foreground;
-                                    font-size: 12px;
-                                    vertical-alignment: center;
-                                    edited => {
-                                        root.filter-changed(root.filter-text);
-                                    }
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            spacing: 4px;
+                            Text {
+                                text: "🔍";
+                                font-size: 12px;
+                                vertical-alignment: center;
+                            }
+                            TextInput {
+                                width: parent.width - 30px;
+                                height: parent.height;
+                                text <=> root.filter-text;
+                                color: Tokens.color-foreground;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                                edited => {
+                                    root.filter-changed(root.filter-text);
                                 }
                             }
                         }
+                    }
 
-                        ConnectionTree {
-                            width: parent.width;
-                            height: parent.height;
-                            nodes: root.tree-nodes;
-                            active: root.active-node;
-                            clicked(id) => { root.tree-node-clicked(id); }
-                            expand-toggled(id) => { root.tree-node-expand-toggled(id); }
-                            right-clicked(id) => {
-                                root.active-node = id;
-                                root.context-menu-visible = true;
-                            }
+                    ConnectionTree {
+                        horizontal-stretch: 1;
+                        vertical-stretch: 1;
+                        nodes: root.tree-nodes;
+                        active: root.active-node;
+                        clicked(id) => { root.tree-node-clicked(id); }
+                        expand-toggled(id) => { root.tree-node-expand-toggled(id); }
+                        right-clicked(id) => {
+                            root.active-node = id;
+                            root.context-menu-visible = true;
                         }
                     }
                 }
@@ -272,9 +296,10 @@ export component MainWindow inherits Window {
                                 rows: root.result-rows;
                                 has-results: root.has-results;
                                 status-text: root.result-status;
-                                error-text: root.result-error;
                                 export-csv => { root.export-csv(); }
                                 export-json => { root.export-json(); }
+                                edit-row(idx) => { root.edit-row(idx); }
+                                delete-row(idx) => { root.delete-row(idx); }
                                 clear-results => {
                                     root.has-results = false;
                                     root.result-status = "";

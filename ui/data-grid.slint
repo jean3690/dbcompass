@@ -8,9 +8,12 @@ export component DataGrid inherits Rectangle {
     in property <string> status-text: "";
     in property <bool> has-results: false;
     in property <string> error-text: "";
+    in-out property <int> edit-row-index: -1;
     callback export-csv();
     callback export-json();
     callback clear-results();
+    callback edit-row(int);
+    callback delete-row(int);
 
     VerticalLayout {
         spacing: 4px;
@@ -48,6 +51,33 @@ export component DataGrid inherits Rectangle {
                     clicked => { root.export-json(); }
                 }
                 Rectangle { horizontal-stretch: 1; }
+                // Row editing
+                Text {
+                    text: "Row #:";
+                    color: Tokens.color-muted-foreground;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+                row-input := TextInput {
+                    width: 50px;
+                    height: 24px;
+                    color: Tokens.color-foreground;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                Button {
+                    text: "Edit";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.outline;
+                    clicked => { root.edit-row(0); }
+                }
+                Button {
+                    text: "Delete";
+                    size: ButtonSize.sm;
+                    variant: ButtonVariant.outline;
+                    clicked => { root.delete-row(0); }
+                }
                 Button {
                     text: "Clear";
                     size: ButtonSize.sm;
@@ -55,7 +85,7 @@ export component DataGrid inherits Rectangle {
                     clicked => { root.clear-results(); }
                 }
             }
-        }
+            }
 
         // Results table
         if root.has-results: Rectangle {
