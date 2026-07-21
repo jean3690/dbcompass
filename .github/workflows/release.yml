@@ -118,6 +118,16 @@ jobs:
             git log --pretty=format:"* %s" $(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD >> release-notes.md || true
           fi
 
+      - name: Generate changelog
+        run: |
+          if command -v git-cliff &> /dev/null; then
+            git-cliff --config cliff.toml --unreleased --strip header > release-notes.md
+          else
+            echo "## v${{ github.ref_name }}" > release-notes.md
+            echo "" >> release-notes.md
+            git log --pretty=format:"* %s" $(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD >> release-notes.md || true
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -126,4 +136,3 @@ jobs:
           files: |
             release-assets/dbcompass-linux-x86_64.tar.gz
             release-assets/dbcompass-windows-x86_64.zip
-          generate_release_notes: true
