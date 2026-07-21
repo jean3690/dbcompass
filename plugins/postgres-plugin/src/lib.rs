@@ -42,27 +42,24 @@ impl DatabaseConnector for PostgresConnector {
     }
 
     fn connect(&self, config: &ConnectorConfig) -> Result<u64, DbError> {
-        let conn_str = if !config.host.is_empty() {
-            {
-                let mut conn_str = format!(
-                    "host={} port={} user={} password={}",
-                    config.host, config.port, config.username, config.password
-                );
-                if !config.database.is_empty() {
-                    conn_str.push_str(&format!(" dbname={}", config.database));
-                }
-                conn_str
+        let client = if !config.host.is_empty() {
+            let mut cfg = postgres::Config::new();
+            cfg.host(&config.host);
+            cfg.port(config.port);
+            cfg.user(&config.username);
+            cfg.password(&config.password);
+            if !config.database.is_empty() {
+                cfg.dbname(&config.database);
             }
-        } else if let Some(ref cs) = config.connection_string {
-            cs.clone()
+            cfg.connect(postgres::NoTls)
+        } else if let Some(cs) = &config.connection_string {
+            postgres::Client::connect(cs, postgres::NoTls)
         } else {
             return Err(DbError::ConnectionFailed(
                 "No connection info provided".into(),
             ));
-        };
-
-        let client = postgres::Client::connect(&conn_str, postgres::NoTls)
-            .map_err(|e| DbError::ConnectionFailed(e.to_string()))?;
+        }
+        .map_err(|e| DbError::ConnectionFailed(e.to_string()))?;
 
         let mut id_lock = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
         let conn_id = *id_lock;

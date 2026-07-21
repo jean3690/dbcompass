@@ -76,11 +76,11 @@ pub struct ConnectorConfig {
     pub port: u16,
     pub database: String,
     pub username: String,
-    #[serde(default)]
+    #[cfg_attr(feature = "serialize", serde(default))]
     pub password: String,
-    #[serde(default)]
+    #[cfg_attr(feature = "serialize", serde(default))]
     pub connection_string: Option<String>,
-    #[serde(default)]
+    #[cfg_attr(feature = "serialize", serde(default))]
     pub extra_params: Vec<(String, String)>,
 }
 
