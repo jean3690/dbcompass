@@ -129,10 +129,18 @@ export component ConnectionFormDialog inherits Rectangle {
                         Input { password: true; placeholder: "••••••••"; text <=> root.password; }
                     }
                 }
+                // Database (optional for PostgreSQL, defaults to username)
                 VerticalLayout {
                     spacing: 4px;
-                    Text { text: "Database"; font-size: 13px; color: Tokens.color-foreground; }
-                    Input { placeholder: "mydb"; text <=> root.database; }
+                    Text {
+                        text: root.connector-type == "PostgreSQL" ? "Database (optional)" : "Database";
+                        font-size: 13px;
+                        color: Tokens.color-foreground;
+                    }
+                    Input {
+                        placeholder: root.connector-type == "PostgreSQL" ? "defaults to username" : "mydb";
+                        text <=> root.database;
+                    }
                 }
             }
 

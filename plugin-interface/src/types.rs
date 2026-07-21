@@ -76,8 +76,11 @@ pub struct ConnectorConfig {
     pub port: u16,
     pub database: String,
     pub username: String,
+    #[serde(default)]
     pub password: String,
+    #[serde(default)]
     pub connection_string: Option<String>,
+    #[serde(default)]
     pub extra_params: Vec<(String, String)>,
 }
 
