@@ -1475,7 +1475,7 @@ pub fn build_edit_row_sql(window: &crate::MainWindow, row_idx: usize) -> String 
     let cols_model = window.get_result_columns();
     let rows_model = window.get_result_rows();
 
-    if row_idx >= rows_model.row_count() as usize {
+    if row_idx >= rows_model.row_count() {
         return String::new();
     }
 
@@ -1534,7 +1534,7 @@ pub fn build_delete_row_sql(window: &crate::MainWindow, row_idx: usize) -> Strin
     let cols_model = window.get_result_columns();
     let rows_model = window.get_result_rows();
 
-    if row_idx >= rows_model.row_count() as usize {
+    if row_idx >= rows_model.row_count() {
         return String::new();
     }
 
